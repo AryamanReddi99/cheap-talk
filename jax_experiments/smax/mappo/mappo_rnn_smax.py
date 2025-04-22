@@ -24,6 +24,10 @@ from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
 # env provides variables as dictionaries indexed by agent ids
 # e.g. obs, env_state = self._env.reset(key)
 # obs = {'agent_0': ..., 'agent_1': ...}
+# if vmapped, the shapes of the returned arrays are (num_envs, array_shape)
+# e.g. if there are 64 envs and the obs is 127, then obs['ally_0'].shape = (64,127)
+
+# we will call them env format (dictionaries) and agent format (array of shape (num_actors, arr_dim))
 
 
 class SMAXWorldStateWrapper(JaxMARLWrapper):
@@ -94,7 +98,8 @@ class ScannedRNN(nn.Module):
         """Applies the module."""
         rnn_state = carry
         ins, resets = x
-        # print('ins', ins)
+        # resets go from shape (1, num_actors) to (1, num_actors, 1)
+        # rnn_state and ins are (num_actors, hidden_dim)
         rnn_state = jnp.where(
             resets[:, np.newaxis],
             self.initialize_carry(ins.shape[0], ins.shape[1]),
@@ -111,6 +116,7 @@ class ScannedRNN(nn.Module):
 
 
 class ActorRNN(nn.Module):
+    # these are the constructor args
     action_dim: Sequence[int]
     config: Dict
 
@@ -122,7 +128,9 @@ class ActorRNN(nn.Module):
             kernel_init=orthogonal(np.sqrt(2)),
             bias_init=constant(0.0),
         )(obs)
-        embedding = nn.relu(embedding)
+        embedding = nn.relu(
+            embedding
+        )  # embedding has 3d shape (1, num_actors, FC_DIM_SIZE)
 
         rnn_in = (embedding, dones)
         hidden, embedding = ScannedRNN()(hidden, rnn_in)
@@ -188,23 +196,35 @@ class Transition(NamedTuple):
 
 def batchify(x: dict, agent_list, num_actors):
     # no padding?
+    # stack adds a new dim across the agents at axis=0
+    # e.g. if the obs had dimension (64, 127) for 64 parallel envs and 127-dim obs,
+    # the new shape is (num_agents, 64, 127)
     x = jnp.stack([x[a] for a in agent_list])
-    # print('batchify', x.shape)
+
+    # reshape puts all the vectors into a big 2d array ordered by the agents
+    # e.g. [[agent_0 env_0],
+    #       [agent_0 env_1]
+    #       [[agent_1 env_0],
+    #       [agent_1 env_1]]
     return x.reshape((num_actors, -1))
 
 
-def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
-    x = x.reshape((num_actors, num_envs, -1))
+def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_agents):
+    # reshapes the 2d array into a 3d array indexed by [agent, env, arr_dim]
+    x = x.reshape((num_agents, num_envs, -1))
+    # back into a dictionary idexed by agent_id
     return {a: x[i] for i, a in enumerate(agent_list)}
 
 
 def make_train(config):
     scenario = map_name_to_scenario(config["MAP_NAME"])
     env = HeuristicEnemySMAX(scenario=scenario, **config["ENV_KWARGS"])
-    config["NUM_ACTORS"] = env.num_agents * config["NUM_ENVS"]
+    config["NUM_ACTORS"] = (
+        env.num_agents * config["NUM_ENVS"]
+    )  # total number of actors across parallel envs
     config["NUM_UPDATES"] = (
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
-    )
+    )  # this is the x-axis on wandb
     config["MINIBATCH_SIZE"] = (
         config["NUM_ACTORS"] * config["NUM_STEPS"] // config["NUM_MINIBATCHES"]
     )
@@ -291,7 +311,9 @@ def make_train(config):
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
         obsv, env_state = jax.vmap(env.reset, in_axes=(0,))(reset_rng)
-        ac_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], 128)
+        ac_init_hstate = ScannedRNN.initialize_carry(
+            config["NUM_ACTORS"], 128
+        )  # 2d shape with (num_actors, hidden dim)
         cr_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], 128)
 
         # TRAIN LOOP
@@ -299,7 +321,18 @@ def make_train(config):
             # COLLECT TRAJECTORIES
             runner_state, update_steps = update_runner_state
 
+            #     runner_state = (
+            #     (actor_train_state, critic_train_state),  # network train states
+            #     env_state,  # env state
+            #     obsv,  # observations
+            #     jnp.zeros((config["NUM_ACTORS"]), dtype=bool),  # dones
+            #     (ac_init_hstate, cr_init_hstate),  # hidden states for actor & critic
+            #     _rng,  # rng for the entire training loop
+            # )
+
             def _env_step(runner_state, unused):
+
+                # runner_state is a single object that gets passed by the scan back to _env_step at each loop
                 train_states, env_state, last_obs, last_done, hstates, rng = (
                     runner_state
                 )
@@ -312,11 +345,16 @@ def make_train(config):
                 )
                 obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
                 ac_in = (
-                    obs_batch[np.newaxis, :],
-                    last_done[np.newaxis, :],
+                    obs_batch[
+                        np.newaxis, :
+                    ],  # add new dim to obs_batch (1, num_actors, arr_dim)
+                    last_done[
+                        np.newaxis, :
+                    ],  # adds new dim, i.e. becomes 2d (1, num_actors)
                     avail_actions,
                 )
-                # print('env step ac in', ac_in)
+
+                # network.apply just means we use the __call__ method of nn.Module we overwrite in the network child class
                 ac_hstate, pi = actor_network.apply(
                     train_states[0].params, hstates[0], ac_in
                 )
@@ -350,7 +388,9 @@ def make_train(config):
                 info = jax.tree.map(lambda x: x.reshape((config["NUM_ACTORS"])), info)
                 done_batch = batchify(done, env.agents, config["NUM_ACTORS"]).squeeze()
                 transition = Transition(
-                    jnp.tile(done["__all__"], env.num_agents),
+                    jnp.tile(
+                        done["__all__"], env.num_agents
+                    ),  # global done for one env
                     last_done,
                     action.squeeze(),
                     value.squeeze(),
@@ -372,6 +412,9 @@ def make_train(config):
                 return runner_state, transition
 
             initial_hstates = runner_state[-2]
+
+            # runner_state has 6 elements
+            # traj_batch is list of transitions
             runner_state, traj_batch = jax.lax.scan(
                 _env_step, runner_state, None, config["NUM_STEPS"]
             )
@@ -408,7 +451,10 @@ def make_train(config):
 
                 _, advantages = jax.lax.scan(
                     _get_advantages,
-                    (jnp.zeros_like(last_val), last_val),
+                    (
+                        jnp.zeros_like(last_val),
+                        last_val,
+                    ),  # carry = gae (initially 0) & last value
                     traj_batch,
                     reverse=True,
                     unroll=16,
@@ -416,6 +462,7 @@ def make_train(config):
                 return advantages, advantages + traj_batch.value
 
             advantages, targets = _calculate_gae(traj_batch, last_val)
+            # shape (num_actors)
 
             # UPDATE NETWORK
             def _update_epoch(update_state, unused):
@@ -571,6 +618,7 @@ def make_train(config):
                 )
                 return update_state, loss_info
 
+            # update_state has 6 elements
             update_state = (
                 train_states,
                 initial_hstates,
@@ -622,13 +670,17 @@ def make_train(config):
 
         rng, _rng = jax.random.split(rng)
         runner_state = (
-            (actor_train_state, critic_train_state),
-            env_state,
-            obsv,
-            jnp.zeros((config["NUM_ACTORS"]), dtype=bool),
-            (ac_init_hstate, cr_init_hstate),
-            _rng,
+            (actor_train_state, critic_train_state),  # network train states
+            env_state,  # env state
+            obsv,  # observations (still in env format), shape (num_envs, arr_dim)
+            jnp.zeros(
+                (config["NUM_ACTORS"]), dtype=bool
+            ),  # dones are in shape (num_actors)
+            (ac_init_hstate, cr_init_hstate),  # hidden states for actor & critic
+            _rng,  # rng for the entire training loop
         )
+
+        # highest level runner state has 6 elements
         runner_state, metric = jax.lax.scan(
             _update_step, (runner_state, 0), None, config["NUM_UPDATES"]
         )
