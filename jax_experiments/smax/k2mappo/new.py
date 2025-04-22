@@ -1063,9 +1063,9 @@ def make_train(config):
 
                     return runner_state_k_init, (advantages, traj_batch)
 
-                _, (advantages_stack, traj_batch_stack) = jax.lax.scan(
-                    _get_advantages, runner_state_k_init, jnp.arange(env.num_agents)
-                )
+                _, (advantages_stack, traj_batch_stack) = jax.vmap(
+                    _get_advantages, in_axes=(None, 0)
+                )(runner_state_k_init, jnp.arange(env.num_agents))
                 # advantages_stack has shape (num_agents, num_steps, num_actors)
                 # eahc element in traj_batch_stack has shape (num_actors, num_steps, num_actors, arr_dim)
 
