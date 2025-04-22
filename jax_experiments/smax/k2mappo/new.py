@@ -222,25 +222,6 @@ def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_agents):
 # def combine_actions()
 
 
-def callback(metric):
-    wandb.log(
-        {
-            # the metrics have an agent dimension, but this is identical
-            # for all agents so index into the 0th item of that dimension.
-            "returns": metric["returned_episode_returns"][:, :, 0][
-                metric["returned_episode"][:, :, 0]
-            ].mean(),
-            "win_rate": metric["returned_won_episode"][:, :, 0][
-                metric["returned_episode"][:, :, 0]
-            ].mean(),
-            "env_step": metric["update_steps"]
-            * config["NUM_ENVS"]
-            * config["NUM_STEPS"],
-            **metric["loss"],
-        }
-    )
-
-
 # need to use a function make_train to return the function to be jitted, train
 # this is because jax cannot jit functions that take string arguments. The underlying
 # compiler (XLA) cannot compile strings
@@ -265,6 +246,24 @@ def make_train(config):
         if config["SCALE_CLIP_EPS"]
         else config["CLIP_EPS"]
     )
+
+    def callback(metric):
+        wandb.log(
+            {
+                # the metrics have an agent dimension, but this is identical
+                # for all agents so index into the 0th item of that dimension.
+                "returns": metric["returned_episode_returns"][:, :, 0][
+                    metric["returned_episode"][:, :, 0]
+                ].mean(),
+                "win_rate": metric["returned_won_episode"][:, :, 0][
+                    metric["returned_episode"][:, :, 0]
+                ].mean(),
+                "env_step": metric["update_steps"]
+                * config["NUM_ENVS"]
+                * config["NUM_STEPS"],
+                **metric["loss"],
+            }
+        )
 
     def train(rng):
         def train_setup(rng):
@@ -752,6 +751,8 @@ def make_train(config):
                     )
 
                     # batch is in sequence
+                    # init_hstates has shape (1, NUM_ACTORS, dim)
+
                     batch = (
                         init_hstates[0],
                         init_hstates[1],
@@ -759,6 +760,7 @@ def make_train(config):
                         advantages.squeeze(),
                         targets.squeeze(),
                     )
+                    # we permute among the actors (remember, we backprop through the entire episode)
                     permutation = jax.random.permutation(_rng, config["NUM_ACTORS"])
 
                     shuffled_batch = jax.tree.map(
@@ -917,25 +919,26 @@ def make_train(config):
                             train_states[0].params, hstates[0], ac_in
                         )
                         action = pi.sample(seed=_rng)
-                        log_prob = pi.log_prob(action)
-                        env_act = unbatchify(
-                            action, env.agents, config["NUM_ENVS"], env.num_agents
+                        action_reshaped = action.reshape(
+                            (env.num_agents, config["NUM_ENVS"], -1)
                         )
-                        env_act = {k: v.squeeze() for k, v in env_act.items()}
+                        log_prob = pi.log_prob(action)
 
                         # k1 actions
                         ac_hstate_k, pi_k = actor_network_k.apply(
                             train_states_k[0].params, hstates_k[0], ac_in
                         )
                         action_k = pi_k.sample(seed=_rng_k)
-                        # log_prob_k = pi_k.log_prob(action_k)
-                        env_act_k = unbatchify(
-                            action_k, env.agents, config["NUM_ENVS"], env.num_agents
+                        action_k_reshaped = action_k.reshape(
+                            (env.num_agents, config["NUM_ENVS"], -1)
                         )
-                        env_act_k = {k: v.squeeze() for k, v in env_act_k.items()}
-                        env_act_k[env.agents[agent_k0_idx]] = env_act[
-                            env.agents[agent_k0_idx]
-                        ]
+                        action_k_reshaped = action_k_reshaped.at[agent_k0_idx].set(
+                            action_reshaped[agent_k0_idx]
+                        )
+                        env_act_k_mixed = {
+                            agent: action_k_reshaped[idx].squeeze()
+                            for idx, agent in enumerate(env.agents)
+                        }
 
                         # VALUE
                         # output of wrapper is (num_envs, num_agents, world_state_size)
@@ -956,7 +959,7 @@ def make_train(config):
                         rng_step = jax.random.split(_rng, config["NUM_ENVS"])
                         obsv, env_state, reward, done, info = jax.vmap(
                             env.step, in_axes=(0, 0, 0)
-                        )(rng_step, env_state, env_act)
+                        )(rng_step, env_state, env_act_k_mixed)
                         info = jax.tree.map(
                             lambda x: x.reshape((config["NUM_ACTORS"])), info
                         )
@@ -1058,129 +1061,82 @@ def make_train(config):
                     # shape (num_actors, timesteps)
                     advantages = _calculate_gae(traj_batch, last_val)
 
-                    return runner_state, (advantages, traj_batch)
+                    return runner_state_k_init, (advantages, traj_batch)
 
-                runner_state_k_init, (advantages_stack, traj_batch_stack) = (
-                    jax.lax.scan(
-                        _get_advantages, runner_state_k_init, jnp.arange(env.num_agents)
-                    )
+                _, (advantages_stack, traj_batch_stack) = jax.lax.scan(
+                    _get_advantages, runner_state_k_init, jnp.arange(env.num_agents)
                 )
-
-                advantages_dict = {
-                    id: advantages_stack[idx] for idx, id in enumerate(env.agents)
-                }
-                traj_batch_dict = {
-                    id: traj_batch_stack[idx] for idx, id in enumerate(env.agents)
-                }
+                # advantages_stack has shape (num_agents, num_steps, num_actors)
+                # eahc element in traj_batch_stack has shape (num_actors, num_steps, num_actors, arr_dim)
 
                 def _update_epoch(update_state, unused):
-                    def _get_actor_loss(update_state, agent_id):
-                        def _get_minibatch_loss(train_states, batch_info):
-                            actor_train_state, critic_train_state = train_states
-                            (
-                                ac_init_hstate,
-                                cr_init_hstate,
-                                traj_batch,
-                                advantages,
-                                targets,
-                            ) = batch_info
-
-                            def _actor_loss_fn(
-                                actor_params, init_hstate, traj_batch, gae
-                            ):
-                                # RERUN NETWORK
-                                _, pi = actor_network.apply(
-                                    actor_params,
-                                    init_hstate.squeeze(),
-                                    (
-                                        traj_batch.obs,
-                                        traj_batch.done,
-                                        traj_batch.avail_actions,
-                                    ),
-                                )
-                                log_prob = pi.log_prob(traj_batch.action)
-
-                                # CALCULATE ACTOR LOSS
-                                logratio = log_prob - traj_batch.log_prob
-                                ratio = jnp.exp(logratio)
-                                gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                                loss_actor1 = ratio * gae
-                                loss_actor2 = (
-                                    jnp.clip(
-                                        ratio,
-                                        1.0 - config["CLIP_EPS"],
-                                        1.0 + config["CLIP_EPS"],
-                                    )
-                                    * gae
-                                )
-                                loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
-                                loss_actor = loss_actor.mean()
-                                entropy = pi.entropy().mean()
-
-                                # debug
-                                approx_kl = ((ratio - 1) - logratio).mean()
-                                clip_frac = jnp.mean(
-                                    jnp.abs(ratio - 1) > config["CLIP_EPS"]
-                                )
-
-                                actor_loss = loss_actor - config["ENT_COEF"] * entropy
-
-                                return actor_loss, (
-                                    loss_actor,
-                                    entropy,
-                                    ratio,
-                                    approx_kl,
-                                    clip_frac,
-                                )
-
+                    def _update_minibatch(train_states, batch_info):
+                        actor_train_state, critic_train_state = train_states
                         (
-                            train_states,
-                            h_states_initial,
-                            traj_batch_dict,
-                            advantages_dict,
-                            rng,
-                        ) = update_state
-                        rng, _rng = jax.random.split(rng)
+                            ac_init_hstate,
+                            cr_init_hstate,
+                            traj_batch,
+                            advantages,
+                        ) = batch_info
 
-                        # add extra leading dimension to hstates
-                        init_hstates = jax.tree.map(
-                            lambda x: jnp.reshape(x, (1, config["NUM_ACTORS"], -1)),
-                            init_hstates,
-                        )
-                        # batch is in sequence
-                        batch = (
-                            init_hstates[0],
-                            init_hstates[1],
-                            traj_batch_dict[agent_id],
-                            advantages_dict[agent_id].squeeze(),
-                        )
-                        permutation = jax.random.permutation(_rng, config["NUM_ACTORS"])
-                        shuffled_batch = jax.tree.map(
-                            lambda x: jnp.take(x, permutation, axis=1), batch
-                        )
-                        minibatches = jax.tree.map(
-                            lambda x: jnp.swapaxes(
-                                jnp.reshape(
-                                    x,
-                                    [x.shape[0], config["NUM_MINIBATCHES"], -1]
-                                    + list(x.shape[2:]),
+                        def _actor_loss_fn(actor_params, init_hstate, traj_batch, gae):
+                            # RERUN NETWORK
+                            _, pi = actor_network.apply(
+                                actor_params,
+                                init_hstate.squeeze(),
+                                (
+                                    traj_batch.obs,
+                                    traj_batch.done,
+                                    traj_batch.avail_actions,
                                 ),
-                                1,
-                                0,
-                            ),
-                            shuffled_batch,
+                            )
+                            log_prob = pi.log_prob(traj_batch.action)
+
+                            # CALCULATE ACTOR LOSS
+                            logratio = log_prob - traj_batch.log_prob
+                            ratio = jnp.exp(logratio)
+                            gae = (gae - gae.mean()) / (gae.std() + 1e-8)
+                            loss_actor1 = ratio * gae
+                            loss_actor2 = (
+                                jnp.clip(
+                                    ratio,
+                                    1.0 - config["CLIP_EPS"],
+                                    1.0 + config["CLIP_EPS"],
+                                )
+                                * gae
+                            )
+                            loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
+                            loss_actor = loss_actor.mean()
+                            entropy = pi.entropy().mean()
+
+                            # debug
+                            approx_kl = ((ratio - 1) - logratio).mean()
+                            clip_frac = jnp.mean(
+                                jnp.abs(ratio - 1) > config["CLIP_EPS"]
+                            )
+
+                            actor_loss = loss_actor - config["ENT_COEF"] * entropy
+
+                            return actor_loss, (
+                                loss_actor,
+                                entropy,
+                                ratio,
+                                approx_kl,
+                                clip_frac,
+                            )
+
+                        actor_grad_fn = jax.value_and_grad(_actor_loss_fn, has_aux=True)
+                        actor_loss, actor_grads = actor_grad_fn(
+                            actor_train_state.params,
+                            ac_init_hstate,
+                            traj_batch,
+                            advantages,
                         )
-                        train_states, actor_loss = jax.lax.scan(
-                            _get_minibatch_loss, train_states, minibatches
+
+                        return (actor_train_state, critic_train_state), (
+                            actor_loss,
+                            actor_grads,
                         )
-                        update_state = (
-                            train_states,
-                            jax.tree.map(lambda x: x.squeeze(), init_hstates),
-                            traj_batch_dict,
-                            advantages_dict,
-                            rng,
-                        )
-                        return update_state, actor_loss
 
                     (
                         train_states,
@@ -1189,15 +1145,66 @@ def make_train(config):
                         advantages_stack,
                         rng,
                     ) = update_state
-                    update_state, actor_loss = jax.lax.scan(
-                        _get_actor_loss, update_state, env.agents
+                    rng, _rng = jax.random.split(rng)
+
+                    # add two extra leading dimensions to hstates (so the NUM_ACTORS dimension is aligned for minibatching)
+                    init_hstates = jax.tree.map(
+                        lambda x: jnp.reshape(x, (1, 1, config["NUM_ACTORS"], -1)),
+                        init_hstates,
                     )
+                    # repeat hstates for each k0 agent to be updated
+                    init_hstates = jax.tree.map(
+                        lambda x: x.repeat(env.num_agents, axis=0), init_hstates
+                    )
+
+                    # batch is in sequence
+                    # init_hstates has shape
+                    # advantages_stack has shape (num_agents, num_steps, num_actors)
+                    # traj_batch_stack items have shape (num_agents, num_steps, num_actors, arr_dim)
+                    batch = (
+                        init_hstates[0],  # (1,1, NUM_ACTORS, dim)
+                        init_hstates[1],  # (1,1, NUM_ACTORS, dim)
+                        traj_batch_stack,  # (num_agents, num_steps, NUM_ACTORS, arr_dim)
+                        advantages_stack.squeeze(),  # (num_agents, num_steps, NUM_ACTORS)
+                    )
+
+                    # we permute among the actors (we backprop through the entire episodes)
+                    permutation = jax.random.permutation(_rng, config["NUM_ACTORS"])
+                    shuffled_batch = jax.tree.map(
+                        lambda x: jnp.take(x, permutation, axis=2), batch
+                    )
+                    shuffled_batch_reshaped = jax.tree.map(
+                        lambda x: jnp.reshape(  # reshapes shuffled batch into separate minibatches by adding a dimension after actor dim
+                            # e.g. advantages_stack (5,128,320) -> (5,128,2,160) if NUM_MINIBATCHES = 2
+                            # traj_batch_stack.obs (5,128,320,127) -> (5,128,2,120,127)
+                            x,
+                            list(x.shape[0:2])
+                            + [config["NUM_MINIBATCHES"], -1]
+                            + list(x.shape[3:]),
+                        ),
+                        shuffled_batch,
+                    )
+                    minibatches = jax.tree.map(  # move minibatch dimension to the front
+                        lambda x: jnp.moveaxis(x, 2, 0), shuffled_batch_reshaped
+                    )
+
+                    train_states, loss_info = jax.lax.scan(
+                        _update_minibatch, train_states, minibatches
+                    )
+                    update_state = (
+                        train_states,
+                        jax.tree.map(lambda x: x.squeeze(), init_hstates),
+                        traj_batch_stack,
+                        advantages_stack,
+                        rng,
+                    )
+                    return update_state, loss_info
 
                 update_state = (
                     train_states,
                     h_states_initial,
-                    traj_batch_dict,
-                    advantages_dict,
+                    traj_batch_stack,
+                    advantages_stack,
                     rng,
                 )
                 update_state, loss_info = jax.lax.scan(
@@ -1215,7 +1222,7 @@ def make_train(config):
                 hstates_initial_k,
                 _train_rng,
             )
-            runner_state = _update_step_k2(runner_state_k_init)
+            runner_state_k2 = _update_step_k2(runner_state_k_init)
 
             update_steps = update_steps + 1
 
