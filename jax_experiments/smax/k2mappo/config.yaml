@@ -28,4 +28,4 @@
 # WandB Params
 "ENTITY": ""
 "PROJECT": "smax"
-"WANDB_MODE" : "disabled"
+"WANDB_MODE" : "online"
