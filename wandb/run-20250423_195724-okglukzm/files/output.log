@@ -1,0 +1,42 @@
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 1330, in main
+    out = train_jit(rng)
+          ^^^^^^^^^^^^^^
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 1302, in train
+    final_runner_state, metrics_list = jax.lax.scan(
+                                       ^^^^^^^^^^^^^
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 1267, in _train_loop
+    runner_state_k2 = _update_step_k2(runner_state_k_init)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 1051, in _update_step_k2
+    _, (advantages_stack, traj_batch_stack) = jax.vmap(
+                                              ^^^^^^^^^
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 983, in _get_advantages
+    final_runner_state, traj_batch = jax.lax.scan(
+                                     ^^^^^^^^^^^^^
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 920, in _env_step
+    action_k_reshaped_batchified = batchify(
+                                   ^^^^^^^^^
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 205, in batchify
+    x = jnp.stack([x[a] for a in agent_list])
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 205, in <listcomp>
+    x = jnp.stack([x[a] for a in agent_list])
+                   ~^^^
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/numpy/array_methods.py", line 1060, in op
+    return getattr(self.aval, f"_{name}")(self, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/numpy/array_methods.py", line 652, in _getitem
+    return indexing.rewriting_take(self, item)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/numpy/indexing.py", line 632, in rewriting_take
+    treedef, static_idx, dynamic_idx = split_index_for_jit(idx, arr.shape)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/numpy/indexing.py", line 720, in split_index_for_jit
+    raise TypeError(f"JAX does not support string indexing; got {idx=}")
+TypeError: JAX does not support string indexing; got idx=('ally_0',)
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

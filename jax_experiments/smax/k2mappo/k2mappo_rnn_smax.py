@@ -2,21 +2,22 @@
 Based on PureJaxRL Implementation of IPPO, with changes to give a centralised critic.
 """
 
+from click import group
 import flax.serialization
 import jax
+import datetime
 import jax.numpy as jnp
 import flax.linen as nn
-from flax import struct
 import numpy as np
 import optax
 from flax.linen.initializers import constant, orthogonal
-from typing import Sequence, NamedTuple, Any, Tuple, Union, Dict
+from typing import Sequence, NamedTuple, Dict
 import wandb
 import functools
 from flax.training.train_state import TrainState
 import distrax
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from functools import partial
 
 from jaxmarl.wrappers.baselines import SMAXLogWrapper, JaxMARLWrapper
@@ -265,7 +266,10 @@ def make_train(config):
             }
         )
 
-    def train(rng):
+    def train(rng, run_idx):
+
+        jax.debug.print("hello {bar}", bar=str(run_idx.astype(int)))
+
         def train_setup(rng):
             # Networks
             actor_network = ActorRNN(env.action_space(env.agents[0]).n, config=config)
@@ -824,18 +828,6 @@ def make_train(config):
 
             runner_state, traj_batch, loss_info = _update_step_k1(runner_state, None)
 
-            # Print to wandb
-            metric = traj_batch.info
-            metric = jax.tree.map(
-                lambda x: x.reshape(
-                    (config["NUM_STEPS"], config["NUM_ENVS"], env.num_agents)
-                ),
-                traj_batch.info,
-            )
-            metric["loss"] = loss_info
-            metric["update_steps"] = update_steps
-            jax.experimental.io_callback(callback, None, metric)
-
             train_states, env_state, obsv, done, hstates, rng = runner_state
 
             # Set k networks to k1 state
@@ -851,12 +843,6 @@ def make_train(config):
             flax.serialization.from_state_dict(
                 critic_train_state_k.params, critic_network_params_k1_dict
             )  # set k1 params in placeholder
-            actor_optimizer_k1_dict = flax.serialization.to_state_dict(
-                train_states[0].tx
-            )
-            critic_optimizer_k1_dict = flax.serialization.to_state_dict(
-                train_states[1].tx
-            )
 
             # reset actor & critic to k0
             flax.serialization.from_state_dict(
@@ -939,6 +925,9 @@ def make_train(config):
                             agent: action_k_reshaped[idx].squeeze()
                             for idx, agent in enumerate(env.agents)
                         }
+                        action_k_mixed = batchify(
+                            env_act_k_mixed, env.agents, config["NUM_ACTORS"]
+                        )
 
                         # VALUE
                         # output of wrapper is (num_envs, num_agents, world_state_size)
@@ -971,7 +960,7 @@ def make_train(config):
                                 done["__all__"], env.num_agents
                             ),  # global done for one env
                             last_done,
-                            action.squeeze(),
+                            action_k_mixed.squeeze(),
                             value.squeeze(),
                             batchify(
                                 reward, env.agents, config["NUM_ACTORS"]
@@ -1281,7 +1270,23 @@ def make_train(config):
             )
             runner_state_k2 = _update_step_k2(runner_state_k_init)
 
+            # actor is now k2, need to give critic its update back
+            flax.serialization.from_state_dict(
+                train_states[1].params, critic_network_params_k1_dict
+            )
+
             update_steps = update_steps + 1
+
+            # Print to wandb
+            metric = jax.tree.map(
+                lambda x: x.reshape(
+                    (config["NUM_STEPS"], config["NUM_ENVS"], env.num_agents)
+                ),
+                traj_batch.info,
+            )
+            metric["loss"] = loss_info
+            metric["update_steps"] = update_steps
+            jax.experimental.io_callback(callback, None, metric)
 
             return (runner_state, update_steps), metric
 
@@ -1311,17 +1316,23 @@ def main(config):
 
     config = OmegaConf.to_container(config)
 
+    # WANDB
+    run_name = f"K2MAPPO_{config['MAP_NAME']}"
+    if config["USE_TIMESTAMP"]:
+        run_name += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
     wandb.init(
         entity=config["ENTITY"],
         project=config["PROJECT"],
-        tags=["MAPPO", "RNN", config["MAP_NAME"]],
+        name=run_name,
+        tags=["K2MAPPO", "RNN", config["MAP_NAME"]],
         config=config,
         mode=config["WANDB_MODE"],
     )
     rng = jax.random.PRNGKey(config["SEED"])
+    rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
     with jax.disable_jit(False):
         train_jit = jax.jit(make_train(config))
-        out = train_jit(rng)
+        out = jax.vmap(train_jit)(rng_seeds, jnp.arange(config["NUM_SEEDS"]))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,15 @@
+{"time":"2025-04-23T19:11:30.304918335+02:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/home/aryaman/Desktop/project-cheap/cheap-talk/wandb/run-20250423_191130-leeosm6j/logs/debug-core.log"}
+{"time":"2025-04-23T19:11:30.549374721+02:00","level":"INFO","msg":"created new stream","id":"leeosm6j"}
+{"time":"2025-04-23T19:11:30.549395206+02:00","level":"INFO","msg":"stream: started","id":"leeosm6j"}
+{"time":"2025-04-23T19:11:30.549442495+02:00","level":"INFO","msg":"writer: Do: started","stream_id":"leeosm6j"}
+{"time":"2025-04-23T19:11:30.549489538+02:00","level":"INFO","msg":"handler: started","stream_id":"leeosm6j"}
+{"time":"2025-04-23T19:11:30.549552712+02:00","level":"INFO","msg":"sender: started","stream_id":"leeosm6j"}
+{"time":"2025-04-23T19:11:30.851102087+02:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-04-23T19:15:06.166729398+02:00","level":"INFO","msg":"stream: closing","id":"leeosm6j"}
+{"time":"2025-04-23T19:15:06.166742407+02:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-04-23T19:15:06.166756768+02:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-04-23T19:15:06.74180498+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-04-23T19:15:06.984881835+02:00","level":"INFO","msg":"handler: closed","stream_id":"leeosm6j"}
+{"time":"2025-04-23T19:15:06.984908662+02:00","level":"INFO","msg":"writer: Close: closed","stream_id":"leeosm6j"}
+{"time":"2025-04-23T19:15:06.984950255+02:00","level":"INFO","msg":"sender: closed","stream_id":"leeosm6j"}
+{"time":"2025-04-23T19:15:06.984968157+02:00","level":"INFO","msg":"stream: closed","id":"leeosm6j"}

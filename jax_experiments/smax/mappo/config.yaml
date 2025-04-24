@@ -18,7 +18,7 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "2s3z"
+"MAP_NAME": "3s_vs_5z"
 "SEED": 0
 "ENV_KWARGS": 
   "see_enemy_actions": True
@@ -28,4 +28,6 @@
 # WandB Params
 "ENTITY": ""
 "PROJECT": "smax"
-"WANDB_MODE" : "disabled"
+"NAME": ""
+"USE_TIMESTAMP": True
+"WANDB_MODE" : "online"

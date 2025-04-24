@@ -3,6 +3,7 @@ Based on PureJaxRL Implementation of IPPO, with changes to give a centralised cr
 """
 
 import jax
+import datetime
 import jax.numpy as jnp
 import flax.linen as nn
 from flax import struct
@@ -694,9 +695,14 @@ def main(config):
 
     config = OmegaConf.to_container(config)
 
+    # WANDB
+    run_name = f"MAPPO_{config['MAP_NAME']}"
+    if config["USE_TIMESTAMP"]:
+        run_name += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
     wandb.init(
         entity=config["ENTITY"],
         project=config["PROJECT"],
+        name=run_name,
         tags=["MAPPO", "RNN", config["MAP_NAME"]],
         config=config,
         mode=config["WANDB_MODE"],

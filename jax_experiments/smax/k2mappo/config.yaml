@@ -1,7 +1,7 @@
 "TOTAL_TIMESTEPS": 1e7
 "NUM_ENVS": 64
 "NUM_STEPS": 128
-"LR": 0.004
+"LR": 4e-3
 "ANNEAL_LR": True
 "UPDATE_EPOCHS": 2
 "NUM_MINIBATCHES": 2
@@ -18,8 +18,9 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "2s3z"
+"MAP_NAME": "3s_vs_5z"
 "SEED": 0
+"NUM_SEEDS": 1
 "ENV_KWARGS": 
   "see_enemy_actions": True
   "walls_cause_death": True
@@ -28,4 +29,6 @@
 # WandB Params
 "ENTITY": ""
 "PROJECT": "smax"
-"WANDB_MODE" : "online"
+"NAME": ""
+"USE_TIMESTAMP": True
+"WANDB_MODE" : "disabled" # online, disabled

@@ -1,0 +1,60 @@
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 1327, in main
+    out = train_jit(rng)
+          ^^^^^^^^^^^^^^
+jaxlib.xla_extension.XlaRuntimeError: INTERNAL: CustomCall failed: CpuCallback error: Traceback (most recent call last):
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 1331, in <module>
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/hydra/main.py", line 94, in decorated_main
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/hydra/_internal/utils.py", line 394, in _run_hydra
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/hydra/_internal/utils.py", line 457, in _run_app
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/hydra/_internal/utils.py", line 220, in run_and_report
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/hydra/_internal/utils.py", line 458, in <lambda>
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/hydra/_internal/hydra.py", line 119, in run
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/hydra/core/utils.py", line 186, in run_job
+  File "/home/aryaman/Desktop/project-cheap/cheap-talk/jax_experiments/smax/k2mappo/k2mappo_rnn_smax.py", line 1327, in main
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/traceback_util.py", line 180, in reraise_with_filtered_traceback
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/pjit.py", line 339, in cache_miss
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/pjit.py", line 194, in _python_pjit_helper
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/pjit.py", line 1681, in _pjit_call_impl_python
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/profiler.py", line 334, in wrapper
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/interpreters/pxla.py", line 1288, in __call__
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/callback.py", line 777, in _wrapped_callback
+KeyboardInterrupt:
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
+Exception ignored in atexit callback: <function _start_and_connect_service.<locals>.teardown_atexit at 0x79bef3d3e520>
+Traceback (most recent call last):
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/wandb/sdk/lib/service_connection.py", line 94, in teardown_atexit
+    conn.teardown(hooks.exit_code)
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/wandb/sdk/lib/service_connection.py", line 226, in teardown
+    self._router.join()
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/wandb/sdk/interface/router.py", line 75, in join
+    self._thread.join()
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/threading.py", line 1119, in join
+    self._wait_for_tstate_lock()
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/threading.py", line 1139, in _wait_for_tstate_lock
+    if lock.acquire(block, timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt:
+Exception ignored in: <function WeakKeyDictionary.__init__.<locals>.remove at 0x79bf5b9963e0>
+Traceback (most recent call last):
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/weakref.py", line 369, in remove
+    def remove(k, selfref=ref(self)):
+
+KeyboardInterrupt:
+Exception ignored in atexit callback: <function clean_up at 0x79bf5b9ad4e0>
+Traceback (most recent call last):
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/api.py", line 2892, in clean_up
+    clear_backends()
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/api.py", line 2881, in clear_backends
+    util.clear_all_caches()
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/site-packages/jax/_src/util.py", line 351, in clear_all_caches
+    clear()
+  File "<frozen _collections_abc>", line 937, in clear
+  File "/home/aryaman/anaconda3/envs/cheap/lib/python3.11/weakref.py", line 499, in popitem
+    o = key()
+        ^^^^^
+KeyboardInterrupt:
