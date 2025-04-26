@@ -1,7 +1,0 @@
-{"time":"2025-04-23T19:21:36.528219166+02:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/home/aryaman/Desktop/project-cheap/cheap-talk/wandb/run-20250423_192136-kqgrzzyo/logs/debug-core.log"}
-{"time":"2025-04-23T19:21:36.770133219+02:00","level":"INFO","msg":"created new stream","id":"kqgrzzyo"}
-{"time":"2025-04-23T19:21:36.77015928+02:00","level":"INFO","msg":"stream: started","id":"kqgrzzyo"}
-{"time":"2025-04-23T19:21:36.77024287+02:00","level":"INFO","msg":"writer: Do: started","stream_id":"kqgrzzyo"}
-{"time":"2025-04-23T19:21:36.770263024+02:00","level":"INFO","msg":"sender: started","stream_id":"kqgrzzyo"}
-{"time":"2025-04-23T19:21:36.770255471+02:00","level":"INFO","msg":"handler: started","stream_id":"kqgrzzyo"}
-{"time":"2025-04-23T19:21:37.054093184+02:00","level":"INFO","msg":"Starting system monitor"}

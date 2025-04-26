@@ -1,7 +1,0 @@
-{"time":"2025-04-23T19:54:24.761889137+02:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/home/aryaman/Desktop/project-cheap/cheap-talk/wandb/run-20250423_195424-wnwmd0fg/logs/debug-core.log"}
-{"time":"2025-04-23T19:54:25.015272406+02:00","level":"INFO","msg":"created new stream","id":"wnwmd0fg"}
-{"time":"2025-04-23T19:54:25.015298654+02:00","level":"INFO","msg":"stream: started","id":"wnwmd0fg"}
-{"time":"2025-04-23T19:54:25.015340348+02:00","level":"INFO","msg":"writer: Do: started","stream_id":"wnwmd0fg"}
-{"time":"2025-04-23T19:54:25.015425893+02:00","level":"INFO","msg":"handler: started","stream_id":"wnwmd0fg"}
-{"time":"2025-04-23T19:54:25.015417399+02:00","level":"INFO","msg":"sender: started","stream_id":"wnwmd0fg"}
-{"time":"2025-04-23T19:54:25.298598286+02:00","level":"INFO","msg":"Starting system monitor"}
