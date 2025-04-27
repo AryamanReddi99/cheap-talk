@@ -50,13 +50,8 @@ class WandbMultiLogger:
             p.start()
             self.processes[i] = p
 
-    def log(self, data_dict):
-        """
-        data_dict: dict of dicts containing metrics to be shared with wandb
-        e.g. data_dict[0] = {"return": 0, loss: 1, ...}
-        """
-        for seed in data_dict.keys():
-            self.queues[seed].put(data_dict[seed])
+    def log(self, seed, data_dict):
+        self.queues[seed].put(data_dict)
 
     def finish(self):
         for seed in self.processes.keys():

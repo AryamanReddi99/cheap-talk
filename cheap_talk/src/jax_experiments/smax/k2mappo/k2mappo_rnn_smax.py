@@ -224,20 +224,24 @@ class Transition(NamedTuple):
 
 
 @struct.dataclass
-class TrainLoopRunnerState:
+class TrainRunnerState:
     actor_train_state: TrainState
     critic_train_state: TrainState
+    actor_train_state_k: TrainState
+    critic_train_state_k: TrainState
     env_state: SMAXLogEnvState
     obs: dict
     done: jnp.array
     actor_hidden_state: jnp.array
     critic_hidden_state: jnp.array
+    actor_hidden_state_k: jnp.array
+    critic_hidden_state_k: jnp.array
     update_step: int
     rng: Array
 
 
 @struct.dataclass
-class UpdateLoopRunnerState:
+class UpdateRunnerState:
     actor_train_state: TrainState
     critic_train_state: TrainState
     traj_batch: Transition
@@ -248,10 +252,6 @@ class UpdateLoopRunnerState:
     rng: Array
 
 
-# need to use a function make_train to return the function to be jitted, train
-# this is because jax cannot jit functions that take string arguments. The underlying
-# compiler (XLA) cannot compile strings
-# therefore to do string logic (e.g. using the config env name, etc) we need a wrapper function
 def make_train(config):
     # Environment
     scenario = map_name_to_scenario(config["MAP_NAME"])
@@ -259,7 +259,7 @@ def make_train(config):
     env = SMAXWorldStateWrapper(env, config["OBS_WITH_AGENT_ID"])
     env = SMAXLogWrapper(env)
 
-    # Adjust config
+    # Config
     config["NUM_ACTORS"] = env.num_agents * config["NUM_ENVS"]
     config["NUM_UPDATES"] = (
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -274,10 +274,25 @@ def make_train(config):
     )
 
     def train(rng, seed):
-        def callback(seed, metric, update_steps):
-            print(metric)
-            # LOGGER.log({int(seed): metric})
-            LOGGER.log({int(seed): metric})
+        jax.debug.print("Compile Finished. Running...")
+
+        def callback(seed, metric):
+            log_dict = {
+                "return": metric["returned_episode_returns"][:, :, 0][
+                    metric["returned_episode"][:, :, 0]
+                ].mean(),
+                "win_rate": metric["returned_won_episode"][:, :, 0][
+                    metric["returned_episode"][:, :, 0]
+                ].mean(),
+                "env_step": metric["update_step"]
+                * config["NUM_ENVS"]
+                * config["NUM_STEPS"],
+                **metric["loss"],
+                **metric["loss_k"],
+            }
+
+            np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
+            LOGGER.log(int(seed), np_log_dict)
 
         def train_setup(rng):
             # Networks
@@ -295,11 +310,11 @@ def make_train(config):
                 jnp.zeros((1, config["NUM_ENVS"])),
                 jnp.zeros((1, config["NUM_ENVS"], env.action_space(env.agents[0]).n)),
             )
-            ac_init_hstate = ScannedRNN.initialize_carry(
+            actor_hidden_state_init = ScannedRNN.initialize_carry(
                 config["NUM_ENVS"], config["GRU_HIDDEN_DIM"]
             )
             actor_network_params = actor_network.init(
-                _rng_actor, ac_init_hstate, ac_init_x
+                _rng_actor, actor_hidden_state_init, ac_init_x
             )
             cr_init_x = (
                 jnp.zeros(
@@ -311,11 +326,11 @@ def make_train(config):
                 ),
                 jnp.zeros((1, config["NUM_ENVS"])),
             )
-            cr_init_hstate = ScannedRNN.initialize_carry(
+            critic_hidden_state_init = ScannedRNN.initialize_carry(
                 config["NUM_ENVS"], config["GRU_HIDDEN_DIM"]
             )
             critic_network_params = critic_network.init(
-                _rng_critic, cr_init_hstate, cr_init_x
+                _rng_critic, critic_hidden_state_init, cr_init_x
             )
 
             # Optimizers
@@ -383,17 +398,11 @@ def make_train(config):
             actor_network_k = ActorRNN(env.action_space(env.agents[0]).n, config=config)
             critic_network_k = CriticRNN(config=config)
             rng, _rng_actor_k, _rng_critic_k = jax.random.split(rng, 3)
-            ac_init_hstate_k = ScannedRNN.initialize_carry(
-                config["NUM_ENVS"], config["GRU_HIDDEN_DIM"]
-            )
             actor_network_params_k = actor_network_k.init(
-                _rng_actor_k, ac_init_hstate_k, ac_init_x
-            )
-            cr_init_hstate_k = ScannedRNN.initialize_carry(
-                config["NUM_ENVS"], config["GRU_HIDDEN_DIM"]
+                _rng_actor_k, actor_hidden_state_init, ac_init_x
             )
             critic_network_params_k = critic_network.init(
-                _rng_critic_k, cr_init_hstate_k, cr_init_x
+                _rng_critic_k, critic_hidden_state_init, cr_init_x
             )
 
             # Train states
@@ -412,11 +421,12 @@ def make_train(config):
             rng, _rng = jax.random.split(rng)
             reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
             obs, env_state = jax.vmap(env.reset, in_axes=(0,))(reset_rng)
-            ac_init_hstate = ScannedRNN.initialize_carry(
-                config["NUM_ACTORS"], 128
-            )  # 2d shape with (num_actors, hidden dim)
-            cr_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], 128)
-
+            actor_hidden_state_init = ScannedRNN.initialize_carry(
+                config["NUM_ACTORS"], config["GRU_HIDDEN_DIM"]
+            )
+            critic_hidden_state_init = ScannedRNN.initialize_carry(
+                config["NUM_ACTORS"], config["GRU_HIDDEN_DIM"]
+            )
             return (
                 actor_train_state,
                 critic_train_state,
@@ -428,9 +438,8 @@ def make_train(config):
                 critic_network_k,
                 obs,
                 env_state,
-                ac_init_hstate,
-                cr_init_hstate,
-                rng,
+                actor_hidden_state_init,
+                critic_hidden_state_init,
             )
 
         rng, _rng_setup = jax.random.split(rng)
@@ -445,14 +454,13 @@ def make_train(config):
             critic_network_k,
             obs,
             env_state,
-            ac_init_hstate,
-            cr_init_hstate,
-            rng,
+            actor_hidden_state_init,
+            critic_hidden_state_init,
         ) = train_setup(_rng_setup)
 
-        # training loop
         def _train_loop(train_runner_state, unused):
-            # save initial settings
+
+            # save initial settings for k
             actor_network_params_k0_dict = flax.serialization.to_state_dict(
                 train_runner_state.actor_train_state.params
             )
@@ -465,57 +473,44 @@ def make_train(config):
             env_state_initial = train_runner_state.env_state
             obs_initial = train_runner_state.obs
             done_initial = train_runner_state.done
-            actor_hstate_init = train_runner_state.actor_hidden_state
-            critic_hstate_init = train_runner_state.critic_hidden_state
+            actor_hidden_state_init = train_runner_state.actor_hidden_state
+            critic_hidden_state_init = train_runner_state.critic_hidden_state
+            update_step = train_runner_state.update_step
 
-            def _update_step_k1(init_train_runner_state, unused):
-                #     runner_state = (
-                #     (actor_train_state, critic_train_state),  # network train states
-                #     env_state,  # env state
-                #     obs,  # observations
-                #     jnp.zeros((config["NUM_ACTORS"]), dtype=bool),  # dones
-                #     (ac_init_hstate, cr_init_hstate),  # hidden states for actor & critic
-                #     _rng,  # rng for the entire training loop
-                # )
-
+            def _update_step_k1(train_runner_state, unused):
                 # save initial hidden states
-                actor_hstate_init_update = init_train_runner_state.actor_hidden_state
-                critic_hstate_init_update = init_train_runner_state.critic_hidden_state
+                actor_hidden_state_init = train_runner_state.actor_hidden_state
+                critic_hidden_state_init = train_runner_state.critic_hidden_state
 
-                # COLLECT TRAJECTORIES
                 def _env_step(runner_state, unused):
                     actor_train_state = runner_state.actor_train_state
                     critic_train_state = runner_state.critic_train_state
                     env_state = runner_state.env_state
-                    obs = runner_state.obs
+                    last_obs = runner_state.obs
                     last_done = runner_state.done  # done is always batched
                     actor_hidden_state = runner_state.actor_hidden_state
                     critic_hidden_state = runner_state.critic_hidden_state
                     rng = runner_state.rng
 
                     # SELECT ACTION
-                    rng, _rng = jax.random.split(rng)
-                    avail_actions = jax.vmap(env.get_avail_actions)(env_state)
+                    avail_actions = jax.vmap(env.get_avail_actions)(env_state.env_state)
                     avail_actions = jax.lax.stop_gradient(
                         batchify(avail_actions, env.agents, config["NUM_ACTORS"])
                     )
-                    obs_batch = batchify(obs, env.agents, config["NUM_ACTORS"])
+                    obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
                     ac_in = (
-                        obs_batch[
-                            np.newaxis, :
-                        ],  # add new dim to obs_batch (1, num_actors, arr_dim)
-                        last_done[
-                            np.newaxis, :
-                        ],  # adds new dim, i.e. becomes 2d (1, num_actors)
+                        obs_batch[np.newaxis, :],
+                        last_done[np.newaxis, :],
                         avail_actions,
                     )
 
                     # network.apply just means we use the __call__ method of nn.Module we overwrite in the network child class
-                    actor_hidden_state, pi = actor_network.apply(
+                    actor_hidden_state_new, pi = actor_network.apply(
                         actor_train_state.params,
                         actor_hidden_state,
                         ac_in,
                     )
+                    rng, _rng = jax.random.split(rng)
                     action = pi.sample(seed=_rng)
                     log_prob = pi.log_prob(action)
                     env_act = unbatchify(
@@ -524,16 +519,16 @@ def make_train(config):
                     env_act = {k: v.squeeze() for k, v in env_act.items()}
 
                     # VALUE
-                    # output of wrapper is (num_envs, num_agents, world_state_size)
+                    # world_state -> (num_envs, num_agents, world_state_size)
                     # swap axes to (num_agents, num_envs, world_state_size) before reshaping to (num_actors, world_state_size)
                     world_state = last_obs["world_state"].swapaxes(0, 1)
                     world_state = world_state.reshape((config["NUM_ACTORS"], -1))
 
                     cr_in = (
                         world_state[None, :],
-                        last_done[np.newaxis, :],
+                        last_done[None, :],
                     )
-                    critic_hidden_state, value = critic_network.apply(
+                    critic_hidden_state_new, value = critic_network.apply(
                         critic_train_state.params,
                         critic_hidden_state,
                         cr_in,
@@ -548,15 +543,18 @@ def make_train(config):
                     # STEP ENV
                     rng, _rng = jax.random.split(rng)
                     rng_step = jax.random.split(_rng, config["NUM_ENVS"])
-                    obs, env_state, reward, done_unbatched, info = jax.vmap(
+                    obs, env_state, reward, done, info = jax.vmap(
                         env.step, in_axes=(0, 0, 0)
                     )(rng_step, env_state, env_act)
-                    done = batchify(
-                        done_unbatched, env.agents, config["NUM_ACTORS"]
+                    info_batched = jax.tree.map(
+                        lambda x: x.reshape((config["NUM_ACTORS"])), info
+                    )
+                    done_batched = batchify(
+                        done, env.agents, config["NUM_ACTORS"]
                     ).squeeze()
-                    transition = Transition(  # transition stores batched data
+                    transition = Transition(  # batched data
                         global_done=jnp.tile(
-                            done_unbatched["__all__"], env.num_agents
+                            done["__all__"], env.num_agents
                         ),  # global done for each env
                         done=last_done,
                         action=action.squeeze(),
@@ -567,35 +565,34 @@ def make_train(config):
                         log_prob=log_prob.squeeze(),
                         obs=obs_batch,
                         world_state=world_state,
-                        info=info,
+                        info=info_batched,
                         avail_actions=avail_actions,
                     )
 
                     runner_state = runner_state.replace(
                         env_state=env_state,
                         obs=obs,
-                        done=done,
-                        actor_hidden_state=actor_hidden_state,
-                        critic_hidden_state=critic_hidden_state,
+                        done=done_batched,
+                        actor_hidden_state=actor_hidden_state_new,
+                        critic_hidden_state=critic_hidden_state_new,
                         rng=rng,
                     )
 
                     return runner_state, transition
 
                 # traj_batch is Transition object with each element being a
-                # jnp array of shape (config["NUM_ACTORS"], config["NUM_STEPS"], arr_dim)
-                final_train_runner_state, traj_batch = jax.lax.scan(
-                    _env_step, init_train_runner_state, None, config["NUM_STEPS"]
+                # jnp array of shape (config["NUM_STEPS"], config["NUM_ACTORS"], arr_dim)
+                train_runner_state, traj_batch = jax.lax.scan(
+                    _env_step, train_runner_state, None, config["NUM_STEPS"]
                 )
 
                 # CALCULATE ADVANTAGE
-                actor_train_state = final_train_runner_state.actor_train_state
-                critic_train_state = final_train_runner_state.critic_train_state
-                env_state = final_train_runner_state.env_state
-                last_obs = final_train_runner_state.obs
-                last_done = final_train_runner_state.done
-                critic_hidden_state = final_train_runner_state.critic_hidden_state
-                rng = final_train_runner_state.rng
+                actor_train_state = train_runner_state.actor_train_state
+                critic_train_state = train_runner_state.critic_train_state
+                last_obs = train_runner_state.obs
+                last_done = train_runner_state.done
+                critic_hidden_state = train_runner_state.critic_hidden_state
+                rng = train_runner_state.rng
 
                 last_world_state = last_obs["world_state"].swapaxes(0, 1)
                 last_world_state = last_world_state.reshape((config["NUM_ACTORS"], -1))
@@ -603,7 +600,7 @@ def make_train(config):
                 # critic needs extra leading dimension on last_world_state and last_done
                 cr_in = (
                     last_world_state[None, :],
-                    last_done[np.newaxis, :],
+                    last_done[None, :],
                 )
                 _, last_val = critic_network.apply(
                     critic_train_state.params, critic_hidden_state, cr_in
@@ -647,18 +644,20 @@ def make_train(config):
                     def _update_minibatch(train_states, minibatch):
                         actor_train_state, critic_train_state = train_states
                         (
-                            actor_hstate_init,
-                            critic_hstate_init,
+                            actor_hidden_state_init,
+                            critic_hidden_state_init,
                             traj_batch,
                             advantages,
                             targets,
                         ) = minibatch
 
-                        def _actor_loss_fn(actor_params, init_hstate, traj_batch, gae):
+                        def _actor_loss_fn(
+                            actor_params, actor_hidden_state_init, traj_batch, gae
+                        ):
                             # RERUN NETWORK
                             _, pi = actor_network.apply(
                                 actor_params,
-                                init_hstate.squeeze(),
+                                actor_hidden_state_init.squeeze(),
                                 (
                                     traj_batch.obs,
                                     traj_batch.done,
@@ -701,12 +700,12 @@ def make_train(config):
                             )
 
                         def _critic_loss_fn(
-                            critic_params, init_hstate, traj_batch, targets
+                            critic_params, critic_hidden_state_init, traj_batch, targets
                         ):
                             # RERUN NETWORK
                             _, value = critic_network.apply(
                                 critic_params,
-                                init_hstate.squeeze(),
+                                critic_hidden_state_init.squeeze(),
                                 (traj_batch.world_state, traj_batch.done),
                             )
 
@@ -728,7 +727,7 @@ def make_train(config):
                         actor_grad_fn = jax.value_and_grad(_actor_loss_fn, has_aux=True)
                         actor_loss, actor_grads = actor_grad_fn(
                             actor_train_state.params,
-                            actor_hstate_init,
+                            actor_hidden_state_init,
                             traj_batch,
                             advantages,
                         )
@@ -737,7 +736,7 @@ def make_train(config):
                         )
                         critic_loss, critic_grads = critic_grad_fn(
                             critic_train_state.params,
-                            critic_hstate_init,
+                            critic_hidden_state_init,
                             traj_batch,
                             targets,
                         )
@@ -767,21 +766,21 @@ def make_train(config):
                     traj_batch = update_state.traj_batch
                     advantages = update_state.advantages
                     targets = update_state.targets
-                    actor_hstate_init = update_state.actor_hidden_state
-                    critic_hstate_init = update_state.critic_hidden_state
+                    actor_hidden_state_init = update_state.actor_hidden_state
+                    critic_hidden_state_init = update_state.critic_hidden_state
                     rng = update_state.rng
 
                     rng, _rng = jax.random.split(rng)
 
                     # add extra leading dimension to hstates
-                    actor_hstate_init = jnp.expand_dims(actor_hstate_init, axis=0)
-                    critic_hstate_init = jnp.expand_dims(critic_hstate_init, axis=0)
+                    actor_hidden_state_init = actor_hidden_state_init[None, :]
+                    critic_hidden_state_init = critic_hidden_state_init[None, :]
 
                     # batch is in sequence
                     # init_hstates has shape (1, NUM_ACTORS, dim)
                     batch = (
-                        actor_hstate_init,
-                        critic_hstate_init,
+                        actor_hidden_state_init,
+                        critic_hidden_state_init,
                         traj_batch,
                         advantages.squeeze(),
                         targets.squeeze(),
@@ -818,50 +817,51 @@ def make_train(config):
                     )
                     return update_state, loss_info
 
-                # update_state has 6 elements
-                init_update_state = UpdateLoopRunnerState(
+                update_state = UpdateRunnerState(
                     actor_train_state=actor_train_state,
                     critic_train_state=critic_train_state,
                     traj_batch=traj_batch,
                     advantages=advantages,
                     targets=targets,
-                    actor_hidden_state=actor_hstate_init_update,
-                    critic_hidden_state=critic_hstate_init_update,
+                    actor_hidden_state=actor_hidden_state_init,
+                    critic_hidden_state=critic_hidden_state_init,
                     rng=rng,
                 )
-                final_update_state, loss_info = jax.lax.scan(
-                    _update_epoch, init_update_state, None, config["UPDATE_EPOCHS"]
+                update_state, loss_info = jax.lax.scan(
+                    _update_epoch, update_state, None, config["UPDATE_EPOCHS"]
                 )
                 loss_info["ratio_0"] = loss_info["ratio"].at[0, 0].get()
                 loss_info = jax.tree.map(lambda x: x.mean(), loss_info)
 
-                actor_train_state = final_update_state.actor_train_state
-                critic_train_state = final_update_state.critic_train_state
-                rng = final_update_state.rng
+                actor_train_state = update_state.actor_train_state
+                critic_train_state = update_state.critic_train_state
+                rng = update_state.rng
 
-                runner_state = final_train_runner_state.replace(
+                train_runner_state = train_runner_state.replace(
                     actor_train_state=actor_train_state,
                     critic_train_state=critic_train_state,
-                    update_step=init_train_runner_state.update_step + 1,
+                    update_step=train_runner_state.update_step + 1,
                     rng=rng,
                 )
-                return runner_state, traj_batch, loss_info
+                return train_runner_state, traj_batch, loss_info
 
-            runner_state, traj_batch, loss_info = _update_step_k1(
+            train_runner_state, traj_batch, loss_info = _update_step_k1(
                 train_runner_state, None
             )
 
-            train_states, env_state, obs, done, hstates, rng = runner_state
+            actor_train_state = train_runner_state.actor_train_state
+            critic_train_state = train_runner_state.critic_train_state
+            rng = train_runner_state.rng
 
             # Set k networks to k1 state
             actor_network_params_k1_dict = flax.serialization.to_state_dict(
-                train_states[0].params
+                actor_train_state.params
             )  # get k1 params
             flax.serialization.from_state_dict(
                 actor_train_state_k.params, actor_network_params_k1_dict
             )  # set k1 params in placeholder
             critic_network_params_k1_dict = flax.serialization.to_state_dict(
-                train_states[1].params
+                critic_train_state.params
             )  # get k1 params
             flax.serialization.from_state_dict(
                 critic_train_state_k.params, critic_network_params_k1_dict
@@ -869,43 +869,37 @@ def make_train(config):
 
             # reset actor & critic to k0
             flax.serialization.from_state_dict(
-                train_states[0].params, actor_network_params_k0_dict
+                actor_train_state.params, actor_network_params_k0_dict
             )
             flax.serialization.from_state_dict(
-                train_states[0].tx, actor_optimizer_k0_dict
+                actor_train_state.tx, actor_optimizer_k0_dict
             )
             flax.serialization.from_state_dict(
-                train_states[1].params, critic_network_params_k0_dict
+                critic_train_state.params, critic_network_params_k0_dict
             )
 
-            def _update_step_k2(runner_state_k_init):
-                (
-                    train_states,
-                    (actor_train_state_k, critic_train_state_k),
-                    env_state_initial,
-                    obs_initial,
-                    done_initial,
-                    h_states_initial,
-                    hstates_initial_k,
-                    rng,
-                ) = runner_state_k_init
+            def _update_step_k2(train_runner_state_k):
+                # save initial hidden states
+                actor_hidden_state_init = train_runner_state_k.actor_hidden_state
+                critic_hidden_state_init = train_runner_state_k.critic_hidden_state
 
-                def _get_advantages(runner_state_k_init, agent_k0_idx):
-                    def _env_step(runner_state, unused):
+                def _get_advantages(runner_state_k, agent_k0_idx):
+                    def _env_step(runner_state_k, unused):
                         # runner_state is a single object that gets passed by the scan back to _env_step at each loop
-                        (
-                            train_states,
-                            train_states_k,
-                            env_state,
-                            last_obs,
-                            last_done,
-                            hstates,
-                            hstates_k,
-                            rng,
-                        ) = runner_state
+                        actor_train_state = runner_state_k.actor_train_state
+                        critic_train_state = runner_state_k.critic_train_state
+                        actor_train_state_k = runner_state_k.actor_train_state_k
+                        critic_train_state_k = runner_state_k.critic_train_state_k
+                        env_state = runner_state_k.env_state
+                        last_obs = runner_state_k.obs
+                        last_done = runner_state_k.done  # done is always batched
+                        actor_hidden_state = runner_state_k.actor_hidden_state
+                        critic_hidden_state = runner_state_k.critic_hidden_state
+                        actor_hidden_state_k = runner_state_k.actor_hidden_state_k
+                        critic_hidden_state_k = runner_state_k.critic_hidden_state_k
+                        rng = runner_state_k.rng
 
                         # SELECT ACTION
-                        rng, _rng, _rng_k = jax.random.split(rng, 3)
                         avail_actions = jax.vmap(env.get_avail_actions)(
                             env_state.env_state
                         )
@@ -914,18 +908,15 @@ def make_train(config):
                         )
                         obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
                         ac_in = (
-                            obs_batch[
-                                np.newaxis, :
-                            ],  # add new dim to obs_batch (1, num_actors, arr_dim)
-                            last_done[
-                                np.newaxis, :
-                            ],  # adds new dim, i.e. becomes 2d (1, num_actors)
+                            obs_batch[None, :],
+                            last_done[None, :],
                             avail_actions,
                         )
 
                         # network.apply just means we use the __call__ method of nn.Module we overwrite in the network child class
-                        ac_hstate, pi = actor_network.apply(
-                            train_states[0].params, hstates[0], ac_in
+                        rng, _rng, _rng_k = jax.random.split(rng, 3)
+                        actor_hidden_state_new, pi = actor_network.apply(
+                            actor_train_state.params, actor_hidden_state, ac_in
                         )
                         action = pi.sample(seed=_rng)
                         action_reshaped = action.reshape(
@@ -934,10 +925,10 @@ def make_train(config):
                         log_prob = pi.log_prob(action)
 
                         # k1 actions
-                        ac_hstate_k, pi_k = actor_network_k.apply(
-                            train_states_k[0].params, hstates_k[0], ac_in
+                        actor_hidden_state_k_new, pi_k = actor_network_k.apply(
+                            actor_train_state_k.params, actor_hidden_state_k, ac_in
                         )
-                        action_k = pi_k.sample(seed=_rng_k)
+                        action_k = jax.lax.stop_gradient(pi_k.sample(seed=_rng_k))
                         action_k_reshaped = action_k.reshape(
                             (env.num_agents, config["NUM_ENVS"], -1)
                         )
@@ -948,9 +939,6 @@ def make_train(config):
                             agent: action_k_reshaped[idx].squeeze()
                             for idx, agent in enumerate(env.agents)
                         }
-                        action_k_mixed = batchify(
-                            env_act_k_mixed, env.agents, config["NUM_ACTORS"]
-                        )
 
                         # VALUE
                         # output of wrapper is (num_envs, num_agents, world_state_size)
@@ -960,10 +948,10 @@ def make_train(config):
 
                         cr_in = (
                             world_state[None, :],
-                            last_done[np.newaxis, :],
+                            last_done[None, :],
                         )
-                        cr_hstate, value = critic_network.apply(
-                            train_states[1].params, hstates[1], cr_in
+                        critic_hidden_state_new, value = critic_network.apply(
+                            critic_train_state.params, critic_hidden_state, cr_in
                         )
 
                         # STEP ENV
@@ -972,55 +960,50 @@ def make_train(config):
                         obs, env_state, reward, done, info = jax.vmap(
                             env.step, in_axes=(0, 0, 0)
                         )(rng_step, env_state, env_act_k_mixed)
-                        info = jax.tree.map(
+                        info_batched = jax.tree.map(
                             lambda x: x.reshape((config["NUM_ACTORS"])), info
                         )
-                        done_batch = batchify(
+                        done_batched = batchify(
                             done, env.agents, config["NUM_ACTORS"]
                         ).squeeze()
                         transition = Transition(
-                            jnp.tile(
+                            global_done=jnp.tile(
                                 done["__all__"], env.num_agents
-                            ),  # global done for one env
-                            last_done,
-                            action_k_mixed.squeeze(),
-                            value.squeeze(),
-                            batchify(
+                            ),  # global done for each env
+                            done=last_done,
+                            action=action.squeeze(),
+                            value=value.squeeze(),
+                            reward=batchify(
                                 reward, env.agents, config["NUM_ACTORS"]
                             ).squeeze(),
-                            log_prob.squeeze(),
-                            obs_batch,
-                            world_state,
-                            info,
-                            avail_actions,
+                            log_prob=log_prob.squeeze(),
+                            obs=obs_batch,
+                            world_state=world_state,
+                            info=info_batched,
+                            avail_actions=avail_actions,
                         )
-                        runner_state = (
-                            train_states,
-                            train_states_k,
-                            env_state,
-                            obs,
-                            done_batch,
-                            (ac_hstate, cr_hstate),
-                            (ac_hstate_k, cr_hstate),
-                            rng,
+                        runner_state_k = runner_state_k.replace(
+                            env_state=env_state,
+                            obs=obs,
+                            done=done_batched,
+                            actor_hidden_state=actor_hidden_state_new,
+                            critic_hidden_state=critic_hidden_state_new,
+                            actor_hidden_state_k=actor_hidden_state_k_new,
+                            rng=rng,
                         )
-                        return runner_state, transition
+                        return runner_state_k, transition
 
                     # trajectory with k0 actions from agent_id and k1 from others
-                    final_runner_state, traj_batch = jax.lax.scan(
-                        _env_step, runner_state_k_init, None, config["NUM_STEPS"]
+                    runner_state_k, traj_batch_k = jax.lax.scan(
+                        _env_step, runner_state_k, None, config["NUM_STEPS"]
                     )
 
-                    (
-                        train_states,
-                        train_states_k,
-                        env_state,
-                        last_obs,
-                        last_done,
-                        last_hstates,
-                        last_hstates_k,
-                        rng,
-                    ) = final_runner_state
+                    actor_train_state = runner_state_k.actor_train_state
+                    critic_train_state = runner_state_k.critic_train_state
+                    last_obs = runner_state_k.obs
+                    last_done = runner_state_k.done
+                    critic_hidden_state = runner_state_k.critic_hidden_state
+                    rng = runner_state_k.rng
 
                     last_world_state = last_obs["world_state"].swapaxes(0, 1)
                     last_world_state = last_world_state.reshape(
@@ -1029,12 +1012,12 @@ def make_train(config):
 
                     cr_in = (
                         last_world_state[None, :],
-                        last_done[np.newaxis, :],
+                        last_done[None, :],
                     )
-                    _, last_val = critic_network.apply(
-                        train_states[1].params, last_hstates[1], cr_in
+                    _, last_val_k = critic_network.apply(
+                        critic_train_state.params, critic_hidden_state, cr_in
                     )
-                    last_val = last_val.squeeze()
+                    last_val_k = last_val_k.squeeze()
 
                     def _calculate_gae(traj_batch, last_val):
                         def _get_advantages(gae_and_next_value, transition):
@@ -1071,13 +1054,13 @@ def make_train(config):
                         return advantages
 
                     # shape (num_actors, timesteps)
-                    advantages = _calculate_gae(traj_batch, last_val)
+                    advantages_k = _calculate_gae(traj_batch_k, last_val_k)
 
-                    return runner_state_k_init, (advantages, traj_batch)
+                    return runner_state_k, (advantages_k, traj_batch_k)
 
                 _, (advantages_stack, traj_batch_stack) = jax.vmap(
                     _get_advantages, in_axes=(None, 0)
-                )(runner_state_k_init, jnp.arange(env.num_agents))
+                )(train_runner_state_k, jnp.arange(env.num_agents))
                 # advantages_stack has shape (num_agents, num_steps, num_actors)
                 # each element in traj_batch_stack has shape (num_actors, num_steps, num_actors, arr_dim)
 
@@ -1100,16 +1083,16 @@ def make_train(config):
                 def _update_epoch(update_state, unused):
                     def _update_minibatch(
                         train_states,
-                        batch_info,
+                        minibatch,
                     ):
                         actor_train_state, critic_train_state = train_states
                         (
-                            ac_init_hstate,
-                            cr_init_hstate,
-                            traj_batch,
-                            advantages,
+                            actor_hidden_state_init,
+                            _,
+                            traj_batch_stack,
+                            advantages_stack,
                             loss_mask,
-                        ) = batch_info
+                        ) = minibatch
 
                         def _total_loss(
                             actor_params, init_hstate, traj_batch, gae, loss_mask
@@ -1143,7 +1126,6 @@ def make_train(config):
                                     * gae
                                 )
                                 loss_actor_all = -jnp.minimum(loss_actor1, loss_actor2)
-                                # loss_actor = loss_actor.mean()
                                 loss_actor_masked = loss_actor_all * loss_mask
                                 loss_actor = loss_actor_masked.sum() / loss_mask.sum()
                                 entropy_all = pi.entropy()
@@ -1151,10 +1133,6 @@ def make_train(config):
                                 entropy = entropy_masked.sum() / loss_mask.sum()
 
                                 # debug
-                                # approx_kl = ((ratio - 1) - logratio).mean()
-                                # clip_frac = jnp.mean(
-                                #     jnp.abs(ratio - 1) > config["CLIP_EPS"]
-                                # )
                                 approx_kl = (
                                     ((ratio - 1) - logratio) * loss_mask
                                 ).sum() / loss_mask.sum()
@@ -1180,56 +1158,50 @@ def make_train(config):
 
                             return total_loss, loss_info
 
-                        actor_grad_fn = jax.value_and_grad(_total_loss, has_aux=True)
-                        actor_loss, actor_grads = actor_grad_fn(
+                        actor_grad_fn_k = jax.value_and_grad(_total_loss, has_aux=True)
+                        actor_loss_k, actor_grads_k = actor_grad_fn_k(
                             actor_train_state.params,
-                            ac_init_hstate,
-                            traj_batch,
-                            advantages,
+                            actor_hidden_state_init,
+                            traj_batch_stack,
+                            advantages_stack,
                             loss_mask,
                         )
 
                         actor_train_state = actor_train_state.apply_gradients(
-                            grads=actor_grads
+                            grads=actor_grads_k
                         )
 
-                        loss_info = {
-                            "actor_loss": actor_loss[0],
-                            "entropy": actor_loss[1][1],
-                            "ratio": actor_loss[1][2],
-                            "approx_kl": actor_loss[1][3],
-                            "clip_frac": actor_loss[1][4],
+                        loss_info_k = {
+                            "actor_loss_k": actor_loss_k[0],
+                            "entropy_k": actor_loss_k[1][1],
+                            "ratio_k": actor_loss_k[1][2],
+                            "approx_kl_k": actor_loss_k[1][3],
+                            "clip_frac_k": actor_loss_k[1][4],
                         }
 
-                        return (actor_train_state, critic_train_state), loss_info
+                        return (actor_train_state, critic_train_state), loss_info_k
 
-                    (
-                        train_states,
-                        init_hstates,
-                        traj_batch_stack,
-                        advantages_stack,
-                        loss_mask,
-                        rng,
-                    ) = update_state
+                    actor_train_state = update_state.actor_train_state
+                    critic_train_state = update_state.critic_train_state
+                    traj_batch_stack = update_state.traj_batch
+                    advantages_stack = update_state.advantages
+                    actor_hidden_state_init = update_state.actor_hidden_state
+                    critic_hidden_state_init = update_state.critic_hidden_state
+                    rng = update_state.rng
+
                     rng, _rng = jax.random.split(rng)
 
                     # add two extra leading dimensions to hstates (so the NUM_ACTORS dimension is aligned for minibatching)
-                    init_hstates = jax.tree.map(
-                        lambda x: jnp.reshape(x, (1, 1, config["NUM_ACTORS"], -1)),
-                        init_hstates,
-                    )
-                    # # repeat hstates for each k0 agent to be updated
-                    # init_hstates = jax.tree.map(
-                    #     lambda x: x.repeat(env.num_agents, axis=0), init_hstates
-                    # )
+                    actor_hidden_state_init = actor_hidden_state_init[None, None, :]
+                    critic_hidden_state_init = critic_hidden_state_init[None, None, :]
 
                     # batch is in sequence
-                    # init_hstates has shape
+                    # init_hstates has shape (1, 1, NUM_ACTORS, dim)
                     # advantages_stack has shape (num_agents, num_steps, num_actors)
                     # traj_batch_stack items have shape (num_agents, num_steps, num_actors, arr_dim)
                     batch = (
-                        init_hstates[0],  # (num_agents,1, NUM_ACTORS, dim)
-                        init_hstates[1],  # (num_agents,1, NUM_ACTORS, dim)
+                        actor_hidden_state_init,  # (num_agents,1, NUM_ACTORS, dim)
+                        critic_hidden_state_init,  # (num_agents,1, NUM_ACTORS, dim)
                         traj_batch_stack,  # (num_agents, num_steps, NUM_ACTORS, arr_dim)
                         advantages_stack,  # (num_agents, num_steps, NUM_ACTORS)
                         loss_mask,  # (num_agents, 1, NUM_ACTORS)
@@ -1256,96 +1228,105 @@ def make_train(config):
                     )
 
                     train_states, loss_info = jax.lax.scan(
-                        _update_minibatch, train_states, minibatches
+                        _update_minibatch,
+                        (actor_train_state, critic_train_state),
+                        minibatches,
                     )
-                    update_state = (
-                        train_states,
-                        jax.tree.map(lambda x: x.squeeze(), init_hstates),
-                        traj_batch_stack,
-                        advantages_stack,
-                        loss_mask,
-                        rng,
+                    update_state = update_state.replace(
+                        actor_train_state=train_states[0],
+                        critic_train_state=train_states[1],
+                        rng=rng,
                     )
                     return update_state, loss_info
 
-                update_state = (
-                    train_states,
-                    h_states_initial,
-                    traj_batch_stack,
-                    advantages_stack,
-                    loss_mask,
-                    rng,
-                )
-                update_state, loss_info = jax.lax.scan(
-                    _update_epoch, update_state, None, config["UPDATE_EPOCHS"]
+                update_state_k = UpdateRunnerState(
+                    actor_train_state=train_runner_state_k.actor_train_state,
+                    critic_train_state=train_runner_state_k.critic_train_state,
+                    traj_batch=traj_batch_stack,
+                    advantages=advantages_stack,
+                    targets=jnp.zeros_like(advantages_stack),  # not needed
+                    actor_hidden_state=actor_hidden_state_init,
+                    critic_hidden_state=critic_hidden_state_init,
+                    rng=train_runner_state_k.rng,
                 )
 
-            rng, _train_rng = jax.random.split(rng)
-            runner_state_k_init = (
-                train_states,
-                (actor_train_state_k, critic_train_state_k),
-                env_state_initial,
-                obs_initial,
-                done_initial,
-                hstates_initial,
-                hstates_initial_k,
-                _train_rng,
+                update_state_k, loss_info_k = jax.lax.scan(
+                    _update_epoch, update_state_k, None, config["UPDATE_EPOCHS"]
+                )
+                loss_info_k["ratio_0_k"] = loss_info_k["ratio_k"].at[0, 0, :].get()
+                loss_info_k = jax.tree.map(lambda x: x.mean(), loss_info_k)
+
+                return train_runner_state_k, loss_info_k
+
+            rng, _train_rng_k = jax.random.split(rng)
+            train_runner_state_k = TrainRunnerState(
+                actor_train_state=actor_train_state,
+                critic_train_state=critic_train_state,
+                actor_train_state_k=actor_train_state_k,
+                critic_train_state_k=critic_train_state_k,
+                env_state=env_state_initial,
+                obs=obs_initial,
+                done=done_initial,
+                actor_hidden_state=actor_hidden_state_init,
+                critic_hidden_state=critic_hidden_state_init,
+                actor_hidden_state_k=actor_hidden_state_init,
+                critic_hidden_state_k=critic_hidden_state_init,
+                update_step=update_step,
+                rng=_train_rng_k,
             )
-            runner_state_k2 = _update_step_k2(runner_state_k_init)
+            train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
             # actor is now k2, need to give critic its update back
             flax.serialization.from_state_dict(
-                train_states[1].params, critic_network_params_k1_dict
+                train_runner_state.critic_train_state.params,
+                critic_network_params_k1_dict,
             )
-
-            update_steps = update_steps + 1
 
             # Print to wandb
             metric = traj_batch.info
-            metric["update_step"] = update_steps
-            log_dict = {
-                "return": metric["returned_episode_returns"][:, :, 0][
-                    metric["returned_episode"][:, :, 0]
-                ].mean(),
-                "win_rate": metric["returned_won_episode"][:, :, 0][
-                    metric["returned_episode"][:, :, 0]
-                ].mean(),
-                "env_step": metric["update_step"]
-                * config["NUM_ENVS"]
-                * config["NUM_STEPS"],
-                **loss_info,
-            }
-            jax.experimental.io_callback(callback, None, seed, log_dict, update_steps)
-            # jax.debug.print("hello {bar}", bar=update_steps.astype(int))
+            metric = jax.tree.map(
+                lambda x: x.reshape(
+                    (config["NUM_STEPS"], config["NUM_ENVS"], env.num_agents)
+                ),
+                traj_batch.info,
+            )
+            metric["loss"] = loss_info
+            metric["loss_k"] = loss_info_k
+            metric["update_step"] = update_step
+            jax.experimental.io_callback(callback, None, seed, metric)
 
-            return (runner_state, update_steps), metric
+            update_step = update_step + 1
+
+            train_runner_state = train_runner_state.replace(
+                actor_train_state=train_runner_state_k.actor_train_state,
+                critic_train_state=train_runner_state_k.critic_train_state,
+                actor_train_state_k=train_runner_state_k.actor_train_state_k,
+                critic_train_state_k=train_runner_state_k.critic_train_state_k,
+                update_step=update_step,
+                rng=rng,
+            )
+            return train_runner_state, metric
 
         rng, _train_rng = jax.random.split(rng)
 
-        initial_runner_state = TrainLoopRunnerState(
+        initial_runner_state = TrainRunnerState(
             actor_train_state=actor_train_state,
             critic_train_state=critic_train_state,
+            actor_train_state_k=actor_train_state_k,
+            critic_train_state_k=critic_train_state_k,
             env_state=env_state,
             obs=obs,
-            dones=jnp.zeros((config["NUM_ACTORS"]), dtype=bool),
-            actor_hidden_state=ac_init_hstate,
-            critic_hidden_state=cr_init_hstate,
+            done=jnp.zeros((config["NUM_ACTORS"]), dtype=bool),
+            actor_hidden_state=actor_hidden_state_init,
+            critic_hidden_state=critic_hidden_state_init,
+            actor_hidden_state_k=actor_hidden_state_init,
+            critic_hidden_state_k=critic_hidden_state_init,
             update_step=0,
             rng=_train_rng,
         )
-        # initial_runner_state = (
-        #     (actor_train_state, critic_train_state),  # network train states
-        #     env_state,  # env state
-        #     obs,  # observations (still in env format), shape (num_envs, arr_dim)
-        #     jnp.zeros(
-        #         (config["NUM_ACTORS"]), dtype=bool
-        #     ),  # dones are in shape (num_actors)
-        #     (ac_init_hstate, cr_init_hstate),  # hidden states for actor & critic
-        #     _train_rng,  # rng for the entire training loop
-        # )
 
         # highest level runner state has 6 elements
-        final_runner_state, metrics_list = jax.lax.scan(
+        final_runner_state, metrics_batch = jax.lax.scan(
             _train_loop, initial_runner_state, None, config["NUM_UPDATES"]
         )
         return {"runner_state": final_runner_state}
@@ -1355,30 +1336,31 @@ def make_train(config):
 
 @hydra.main(version_base=None, config_path="./", config_name="config")
 def main(config):
-    config = OmegaConf.to_container(config)
+    try:
+        config = OmegaConf.to_container(config)
 
-    # WANDB
-    group = f"K2MAPPO_{config['MAP_NAME']}"
-    if config["USE_TIMESTAMP"]:
-        group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
-    global LOGGER
-    LOGGER = WandbMultiLogger(
-        project=config["PROJECT"],
-        group=group,
-        config=config,
-        mode=config["WANDB_MODE"],
-        num_seeds=config["NUM_SEEDS"],
-    )
+        # WANDB
+        group = f"K2MAPPO_{config['MAP_NAME']}"
+        if config["USE_TIMESTAMP"]:
+            group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
+        global LOGGER
+        LOGGER = WandbMultiLogger(
+            project=config["PROJECT"],
+            group=group,
+            config=config,
+            mode=config["WANDB_MODE"],
+            num_seeds=config["NUM_SEEDS"],
+        )
 
-    rng = jax.random.PRNGKey(config["SEED"])
-    rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
-    with jax.disable_jit(False):
-        train_jit = jax.jit(make_train(config))
-        out = jax.vmap(train_jit)(rng_seeds, jnp.arange(config["NUM_SEEDS"]))
+        rng = jax.random.PRNGKey(config["SEED"])
+        rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
+        with jax.disable_jit(False):
+            train_jit = jax.jit(make_train(config))
+            out = jax.vmap(train_jit)(rng_seeds, jnp.arange(config["NUM_SEEDS"]))
+    finally:
+        LOGGER.finish()
+        print("Finished training.")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        LOGGER.finish()
+    main()
