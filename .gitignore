@@ -124,5 +124,5 @@ wandb/
 .vscode
 
 # Results
-results/
+outputs/
 
