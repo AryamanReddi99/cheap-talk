@@ -461,15 +461,11 @@ def make_train(config):
         def _train_loop(train_runner_state, unused):
 
             # save initial settings for k
-            actor_network_params_k0_dict = flax.serialization.to_state_dict(
-                train_runner_state.actor_train_state.params
-            )
-            critic_network_params_k0_dict = flax.serialization.to_state_dict(
-                train_runner_state.critic_train_state.params
-            )
-            actor_optimizer_k0_dict = flax.serialization.to_state_dict(
-                train_runner_state.actor_train_state.tx
-            )
+            actor_params_k0 = train_runner_state.actor_train_state.params
+            critic_params_k0 = train_runner_state.critic_train_state.params
+            actor_optimizer_k0 = train_runner_state.actor_train_state.opt_state
+            actor_train_state_k = train_runner_state.actor_train_state_k
+            critic_train_state_k = train_runner_state.critic_train_state_k
             env_state_initial = train_runner_state.env_state
             obs_initial = train_runner_state.obs
             done_initial = train_runner_state.done
@@ -499,12 +495,11 @@ def make_train(config):
                     )
                     obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
                     ac_in = (
-                        obs_batch[np.newaxis, :],
-                        last_done[np.newaxis, :],
+                        obs_batch[None, :],
+                        last_done[None, :],
                         avail_actions,
                     )
 
-                    # network.apply just means we use the __call__ method of nn.Module we overwrite in the network child class
                     actor_hidden_state_new, pi = actor_network.apply(
                         actor_train_state.params,
                         actor_hidden_state,
@@ -840,7 +835,6 @@ def make_train(config):
                 train_runner_state = train_runner_state.replace(
                     actor_train_state=actor_train_state,
                     critic_train_state=critic_train_state,
-                    update_step=train_runner_state.update_step + 1,
                     rng=rng,
                 )
                 return train_runner_state, traj_batch, loss_info
@@ -854,29 +848,19 @@ def make_train(config):
             rng = train_runner_state.rng
 
             # Set k networks to k1 state
-            actor_network_params_k1_dict = flax.serialization.to_state_dict(
-                actor_train_state.params
-            )  # get k1 params
-            flax.serialization.from_state_dict(
-                actor_train_state_k.params, actor_network_params_k1_dict
-            )  # set k1 params in placeholder
-            critic_network_params_k1_dict = flax.serialization.to_state_dict(
-                critic_train_state.params
-            )  # get k1 params
-            flax.serialization.from_state_dict(
-                critic_train_state_k.params, critic_network_params_k1_dict
-            )  # set k1 params in placeholder
+            actor_train_state_k = actor_train_state_k.replace(
+                params=actor_train_state.params
+            )
+            critic_train_state_k = critic_train_state_k.replace(
+                params=critic_train_state.params
+            )
 
             # reset actor & critic to k0
-            flax.serialization.from_state_dict(
-                actor_train_state.params, actor_network_params_k0_dict
+            actor_train_state = actor_train_state.replace(
+                params=actor_params_k0, opt_state=actor_optimizer_k0
             )
-            flax.serialization.from_state_dict(
-                actor_train_state.tx, actor_optimizer_k0_dict
-            )
-            flax.serialization.from_state_dict(
-                critic_train_state.params, critic_network_params_k0_dict
-            )
+            critic_params_k1 = critic_train_state.params
+            critic_train_state = critic_train_state.replace(params=critic_params_k0)
 
             def _update_step_k2(train_runner_state_k):
                 # save initial hidden states
@@ -889,14 +873,12 @@ def make_train(config):
                         actor_train_state = runner_state_k.actor_train_state
                         critic_train_state = runner_state_k.critic_train_state
                         actor_train_state_k = runner_state_k.actor_train_state_k
-                        critic_train_state_k = runner_state_k.critic_train_state_k
                         env_state = runner_state_k.env_state
                         last_obs = runner_state_k.obs
                         last_done = runner_state_k.done  # done is always batched
                         actor_hidden_state = runner_state_k.actor_hidden_state
                         critic_hidden_state = runner_state_k.critic_hidden_state
                         actor_hidden_state_k = runner_state_k.actor_hidden_state_k
-                        critic_hidden_state_k = runner_state_k.critic_hidden_state_k
                         rng = runner_state_k.rng
 
                         # SELECT ACTION
@@ -998,12 +980,11 @@ def make_train(config):
                         _env_step, runner_state_k, None, config["NUM_STEPS"]
                     )
 
-                    actor_train_state = runner_state_k.actor_train_state
+                    # CALCULATE ADVANTAGE
                     critic_train_state = runner_state_k.critic_train_state
                     last_obs = runner_state_k.obs
                     last_done = runner_state_k.done
                     critic_hidden_state = runner_state_k.critic_hidden_state
-                    rng = runner_state_k.rng
 
                     last_world_state = last_obs["world_state"].swapaxes(0, 1)
                     last_world_state = last_world_state.reshape(
@@ -1065,20 +1046,14 @@ def make_train(config):
                 # each element in traj_batch_stack has shape (num_actors, num_steps, num_actors, arr_dim)
 
                 # mask
-                loss_mask_zeros = jnp.zeros(
-                    (advantages_stack.shape)
-                )  # (num_agents, num_steps, num_actors)
-                agent_arange_block = (
-                    jnp.arange(config["NUM_ACTORS"]) // config["NUM_ENVS"]
-                )  # [0,0,0,...,4,4,4,] (320,)
-                loss_mask_bool = (
-                    agent_arange_block[None, :]
-                    == np.arange(loss_mask_zeros.shape[0])[:, None]
-                )  # places the Trues where the arange matches the modulo zero block
-                # loss_mask_bool[0] = [True, True, ... , False, False]. loss_mask_bool[-1] = [False, False, ... ,True, True]
-                loss_mask = loss_mask_bool[:, None, :].astype(
-                    int
-                )  # add intermediate dimension and change to int
+                agent_k0_idx_outer = jnp.arange(env.num_agents)[:, None, None, None]
+                agent_k0_idx_inner = jnp.arange(env.num_agents)[None, None, :, None]
+                mask = agent_k0_idx_outer == agent_k0_idx_inner
+                loss_mask = jnp.broadcast_to(
+                    mask,
+                    (*advantages_stack.shape[:2], env.num_agents, config["NUM_ENVS"]),
+                )
+                loss_mask = loss_mask.reshape((*loss_mask.shape[:2], -1))
 
                 def _update_epoch(update_state, unused):
                     def _update_minibatch(
@@ -1088,13 +1063,12 @@ def make_train(config):
                         actor_train_state, critic_train_state = train_states
                         (
                             actor_hidden_state_init,
-                            _,
                             traj_batch_stack,
                             advantages_stack,
                             loss_mask,
                         ) = minibatch
 
-                        def _total_loss(
+                        def _actor_total_loss(
                             actor_params, init_hstate, traj_batch, gae, loss_mask
                         ):
                             def _actor_loss(
@@ -1151,14 +1125,16 @@ def make_train(config):
                                     clip_frac,
                                 )
 
-                            total_loss_all_agents, loss_info = jax.vmap(
+                            total_actor_loss, loss_info = jax.vmap(
                                 _actor_loss, in_axes=(None, None, 0, 0, 0)
                             )(actor_params, init_hstate, traj_batch, gae, loss_mask)
-                            total_loss = total_loss_all_agents.sum()
+                            total_loss = total_actor_loss.sum()
 
                             return total_loss, loss_info
 
-                        actor_grad_fn_k = jax.value_and_grad(_total_loss, has_aux=True)
+                        actor_grad_fn_k = jax.value_and_grad(
+                            _actor_total_loss, has_aux=True
+                        )
                         actor_loss_k, actor_grads_k = actor_grad_fn_k(
                             actor_train_state.params,
                             actor_hidden_state_init,
@@ -1201,7 +1177,6 @@ def make_train(config):
                     # traj_batch_stack items have shape (num_agents, num_steps, num_actors, arr_dim)
                     batch = (
                         actor_hidden_state_init,  # (num_agents,1, NUM_ACTORS, dim)
-                        critic_hidden_state_init,  # (num_agents,1, NUM_ACTORS, dim)
                         traj_batch_stack,  # (num_agents, num_steps, NUM_ACTORS, arr_dim)
                         advantages_stack,  # (num_agents, num_steps, NUM_ACTORS)
                         loss_mask,  # (num_agents, 1, NUM_ACTORS)
@@ -1256,6 +1231,10 @@ def make_train(config):
                 loss_info_k["ratio_0_k"] = loss_info_k["ratio_k"].at[0, 0, :].get()
                 loss_info_k = jax.tree.map(lambda x: x.mean(), loss_info_k)
 
+                train_runner_state_k = train_runner_state_k.replace(
+                    actor_train_state=update_state_k.actor_train_state,
+                    rng=update_state_k.rng,
+                )
                 return train_runner_state_k, loss_info_k
 
             rng, _train_rng_k = jax.random.split(rng)
@@ -1277,10 +1256,13 @@ def make_train(config):
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
             # actor is now k2, need to give critic its update back
-            flax.serialization.from_state_dict(
-                train_runner_state.critic_train_state.params,
-                critic_network_params_k1_dict,
-            )
+            critic_train_state = critic_train_state.replace(params=critic_params_k1)
+
+            # CHANGE BACK
+            # actor_train_state = actor_train_state.replace(
+            #     params=actor_train_state_k.params,
+            #     opt_state=actor_train_state_k.opt_state,
+            # )
 
             # Print to wandb
             metric = traj_batch.info
@@ -1297,11 +1279,14 @@ def make_train(config):
 
             update_step = update_step + 1
 
+            # ABLATION - CHANGE BACK
+            # train_runner_state = train_runner_state.replace(
+            #     actor_train_state=train_runner_state_k.actor_train_state,
+            #     critic_train_state=critic_train_state,
+            #     update_step=update_step,
+            #     rng=rng,
+            # )
             train_runner_state = train_runner_state.replace(
-                actor_train_state=train_runner_state_k.actor_train_state,
-                critic_train_state=train_runner_state_k.critic_train_state,
-                actor_train_state_k=train_runner_state_k.actor_train_state_k,
-                critic_train_state_k=train_runner_state_k.critic_train_state_k,
                 update_step=update_step,
                 rng=rng,
             )
@@ -1340,7 +1325,7 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        group = f"K2MAPPO_{config['MAP_NAME']}"
+        group = f"K2MAPPO_ABLATION_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
