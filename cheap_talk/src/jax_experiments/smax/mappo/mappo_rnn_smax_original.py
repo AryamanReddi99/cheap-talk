@@ -8,7 +8,6 @@ import flax.linen as nn
 from flax import struct
 import numpy as np
 import optax
-import datetime
 from flax.linen.initializers import constant, orthogonal
 from typing import Sequence, NamedTuple, Any, Tuple, Union, Dict
 import wandb
@@ -21,7 +20,6 @@ from functools import partial
 
 from jaxmarl.wrappers.baselines import SMAXLogWrapper, JaxMARLWrapper
 from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
-from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
 
 
 class SMAXWorldStateWrapper(JaxMARLWrapper):
@@ -220,7 +218,7 @@ def make_train(config):
         )
         return config["LR"] * frac
 
-    def train(rng, exp_id):
+    def train(rng):
         # INIT NETWORK
         actor_network = ActorRNN(env.action_space(env.agents[0]).n, config=config)
         critic_network = CriticRNN(config=config)
@@ -591,41 +589,26 @@ def make_train(config):
             metric["loss"] = loss_info
             rng = update_state[-1]
 
-            def callback(exp_id, metric):
-                log_dict = {
-                    "return": metric["returned_episode_returns"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
-                    "win_rate": metric["returned_won_episode"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
-                    "env_step": metric["update_steps"]
-                    * config["NUM_ENVS"]
-                    * config["NUM_STEPS"],
-                    **metric["loss"],
-                }
-                np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
-                LOGGER.log(int(exp_id), np_log_dict)
-
-                # wandb.log(
-                #     {
-                #         # the metrics have an agent dimension, but this is identical
-                #         # for all agents so index into the 0th item of that dimension.
-                #         "returns": metric["returned_episode_returns"][:, :, 0][
-                #             metric["returned_episode"][:, :, 0]
-                #         ].mean(),
-                #         "win_rate": metric["returned_won_episode"][:, :, 0][
-                #             metric["returned_episode"][:, :, 0]
-                #         ].mean(),
-                #         "env_step": metric["update_steps"]
-                #         * config["NUM_ENVS"]
-                #         * config["NUM_STEPS"],
-                #         **metric["loss"],
-                #     }
-                # )
+            def callback(metric):
+                wandb.log(
+                    {
+                        # the metrics have an agent dimension, but this is identical
+                        # for all agents so index into the 0th item of that dimension.
+                        "returns": metric["returned_episode_returns"][:, :, 0][
+                            metric["returned_episode"][:, :, 0]
+                        ].mean(),
+                        "win_rate": metric["returned_won_episode"][:, :, 0][
+                            metric["returned_episode"][:, :, 0]
+                        ].mean(),
+                        "env_step": metric["update_steps"]
+                        * config["NUM_ENVS"]
+                        * config["NUM_STEPS"],
+                        **metric["loss"],
+                    }
+                )
 
             metric["update_steps"] = update_steps
-            jax.experimental.io_callback(callback, None, exp_id, metric)
+            jax.experimental.io_callback(callback, None, metric)
             update_steps = update_steps + 1
             runner_state = (train_states, env_state, last_obs, last_done, hstates, rng)
             return (runner_state, update_steps), metric
@@ -649,40 +632,21 @@ def make_train(config):
 
 @hydra.main(version_base=None, config_path="./", config_name="config")
 def main(config):
-    try:
-        config = OmegaConf.to_container(config)
 
-        # WANDB
-        group = f"MAPPO_ORIGINAL_{config['MAP_NAME']}"
-        if config["USE_TIMESTAMP"]:
-            group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
-        global LOGGER
-        LOGGER = WandbMultiLogger(
-            project=config["PROJECT"],
-            group=group,
-            config=config,
-            mode=config["WANDB_MODE"],
-            num_seeds=config["NUM_SEEDS"],
-        )
-        # wandb.init(
-        #     project=config["PROJECT"],
-        #     group=f"MAPPO_ORIGINAL{config['MAP_NAME']}",
-        #     tags=["MAPPO", "RNN", config["MAP_NAME"]],
-        #     config=config,
-        #     mode=config["WANDB_MODE"],
-        #     name=str(config["SEED"]),
-        # )
-        rng = jax.random.PRNGKey(config["SEED"])
-        # rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
-        with jax.disable_jit(False):
-            train_jit = jax.jit(make_train(config))
-            out = jax.vmap(train_jit, in_axes=(None, 0))(
-                rng, jnp.arange(config["NUM_SEEDS"])
-            )
-            # out = train_jit(rng, config["SEED"])
-    finally:
-        LOGGER.finish()
-        print("Finished training.")
+    config = OmegaConf.to_container(config)
+
+    wandb.init(
+        project=config["PROJECT"],
+        group=f"MAPPO_ORIGINAL{config['MAP_NAME']}",
+        tags=["MAPPO", "RNN", config["MAP_NAME"]],
+        config=config,
+        mode=config["WANDB_MODE"],
+        name=str(config["SEED"]),
+    )
+    rng = jax.random.PRNGKey(config["SEED"])
+    with jax.disable_jit(False):
+        train_jit = jax.jit(make_train(config))
+        out = train_jit(rng)
 
 
 if __name__ == "__main__":
