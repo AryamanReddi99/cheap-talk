@@ -273,26 +273,8 @@ def make_train(config):
         else config["CLIP_EPS"]
     )
 
-    def train(rng, seed):
+    def train(rng, exp_id):
         jax.debug.print("Compile Finished. Running...")
-
-        def callback(seed, metric):
-            log_dict = {
-                "return": metric["returned_episode_returns"][:, :, 0][
-                    metric["returned_episode"][:, :, 0]
-                ].mean(),
-                "win_rate": metric["returned_won_episode"][:, :, 0][
-                    metric["returned_episode"][:, :, 0]
-                ].mean(),
-                "env_step": metric["update_step"]
-                * config["NUM_ENVS"]
-                * config["NUM_STEPS"],
-                **metric["loss"],
-                **metric["loss_k"],
-            }
-
-            np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
-            LOGGER.log(int(seed), np_log_dict)
 
         def train_setup(rng):
             # Networks
@@ -619,12 +601,13 @@ def make_train(config):
                         )
                         return (gae, value), gae
 
+                    gae_and_next_value = (
+                        jnp.zeros_like(last_val),
+                        last_val,
+                    )
                     _, advantages = jax.lax.scan(
                         _get_advantages,
-                        (
-                            jnp.zeros_like(last_val),
-                            last_val,
-                        ),  # carry = gae (initially 0) & last value
+                        gae_and_next_value,  # carry = gae (initially 0) & last value
                         traj_batch,
                         reverse=True,
                         unroll=16,
@@ -859,8 +842,8 @@ def make_train(config):
             actor_train_state = actor_train_state.replace(
                 params=actor_params_k0, opt_state=actor_optimizer_k0
             )
-            critic_params_k1 = critic_train_state.params
-            critic_train_state = critic_train_state.replace(params=critic_params_k0)
+            # critic_params_k1 = critic_train_state.params
+            # critic_train_state = critic_train_state.replace(params=critic_params_k0)
 
             def _update_step_k2(train_runner_state_k):
                 # save initial hidden states
@@ -1256,13 +1239,12 @@ def make_train(config):
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
             # actor is now k2, need to give critic its update back
-            critic_train_state = critic_train_state.replace(params=critic_params_k1)
+            # critic_train_state = critic_train_state.replace(params=critic_params_k1)
 
-            # CHANGE BACK
-            # actor_train_state = actor_train_state.replace(
-            #     params=actor_train_state_k.params,
-            #     opt_state=actor_train_state_k.opt_state,
-            # )
+            actor_train_state = actor_train_state.replace(
+                params=actor_train_state_k.params,
+                opt_state=actor_train_state_k.opt_state,
+            )
 
             # Print to wandb
             metric = traj_batch.info
@@ -1275,18 +1257,32 @@ def make_train(config):
             metric["loss"] = loss_info
             metric["loss_k"] = loss_info_k
             metric["update_step"] = update_step
-            jax.experimental.io_callback(callback, None, seed, metric)
+
+            def callback(exp_id, metric):
+                log_dict = {
+                    "return": metric["returned_episode_returns"][:, :, 0][
+                        metric["returned_episode"][:, :, 0]
+                    ].mean(),
+                    "win_rate": metric["returned_won_episode"][:, :, 0][
+                        metric["returned_episode"][:, :, 0]
+                    ].mean(),
+                    "env_step": metric["update_step"]
+                    * config["NUM_ENVS"]
+                    * config["NUM_STEPS"],
+                    **metric["loss"],
+                    **metric["loss_k"],
+                }
+
+                np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
+                LOGGER.log(int(exp_id), np_log_dict)
+
+            jax.experimental.io_callback(callback, None, exp_id, metric)
 
             update_step = update_step + 1
 
-            # ABLATION - CHANGE BACK
-            # train_runner_state = train_runner_state.replace(
-            #     actor_train_state=train_runner_state_k.actor_train_state,
-            #     critic_train_state=critic_train_state,
-            #     update_step=update_step,
-            #     rng=rng,
-            # )
             train_runner_state = train_runner_state.replace(
+                actor_train_state=actor_train_state,
+                critic_train_state=critic_train_state,
                 update_step=update_step,
                 rng=rng,
             )
@@ -1325,23 +1321,26 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        group = f"K2MAPPO_ABLATION_{config['MAP_NAME']}"
+        job_type = f"K2MAPPO_K1_CRITIC_{config['MAP_NAME']}"
+        group = f"K2MAPPO_K1_CRITIC_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
         LOGGER = WandbMultiLogger(
             project=config["PROJECT"],
             group=group,
+            job_type=job_type,
             config=config,
             mode=config["WANDB_MODE"],
+            seed=config["SEED"],
             num_seeds=config["NUM_SEEDS"],
         )
 
         rng = jax.random.PRNGKey(config["SEED"])
         rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
-        with jax.disable_jit(False):
-            train_jit = jax.jit(make_train(config))
-            out = jax.vmap(train_jit)(rng_seeds, jnp.arange(config["NUM_SEEDS"]))
+        exp_ids = jnp.arange(config["NUM_SEEDS"])
+        train_jit = jax.jit(make_train(config))
+        out = jax.vmap(train_jit)(rng_seeds, exp_ids)
     finally:
         LOGGER.finish()
         print("Finished training.")

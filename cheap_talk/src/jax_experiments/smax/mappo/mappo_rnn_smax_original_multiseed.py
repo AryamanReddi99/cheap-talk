@@ -607,23 +607,6 @@ def make_train(config):
                 np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
                 LOGGER.log(int(exp_id), np_log_dict)
 
-                # wandb.log(
-                #     {
-                #         # the metrics have an agent dimension, but this is identical
-                #         # for all agents so index into the 0th item of that dimension.
-                #         "returns": metric["returned_episode_returns"][:, :, 0][
-                #             metric["returned_episode"][:, :, 0]
-                #         ].mean(),
-                #         "win_rate": metric["returned_won_episode"][:, :, 0][
-                #             metric["returned_episode"][:, :, 0]
-                #         ].mean(),
-                #         "env_step": metric["update_steps"]
-                #         * config["NUM_ENVS"]
-                #         * config["NUM_STEPS"],
-                #         **metric["loss"],
-                #     }
-                # )
-
             metric["update_steps"] = update_steps
             jax.experimental.io_callback(callback, None, exp_id, metric)
             update_steps = update_steps + 1
@@ -654,32 +637,25 @@ def main(config):
 
         # WANDB
         group = f"MAPPO_ORIGINAL_{config['MAP_NAME']}"
+        job_type = f"MAPPO_ORIGINAL_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
         LOGGER = WandbMultiLogger(
             project=config["PROJECT"],
             group=group,
+            job_type=job_type,
             config=config,
             mode=config["WANDB_MODE"],
+            seed=config["SEED"],
             num_seeds=config["NUM_SEEDS"],
         )
-        # wandb.init(
-        #     project=config["PROJECT"],
-        #     group=f"MAPPO_ORIGINAL{config['MAP_NAME']}",
-        #     tags=["MAPPO", "RNN", config["MAP_NAME"]],
-        #     config=config,
-        #     mode=config["WANDB_MODE"],
-        #     name=str(config["SEED"]),
-        # )
         rng = jax.random.PRNGKey(config["SEED"])
-        # rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
-        with jax.disable_jit(False):
-            train_jit = jax.jit(make_train(config))
-            out = jax.vmap(train_jit, in_axes=(None, 0))(
-                rng, jnp.arange(config["NUM_SEEDS"])
-            )
-            # out = train_jit(rng, config["SEED"])
+        rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
+        exp_ids = jnp.arange(config["NUM_SEEDS"])
+        train_jit = jax.jit(make_train(config))
+        out = jax.vmap(train_jit)(rng_seeds, exp_ids)
+
     finally:
         LOGGER.finish()
         print("Finished training.")

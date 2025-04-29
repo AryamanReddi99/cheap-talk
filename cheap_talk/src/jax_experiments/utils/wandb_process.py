@@ -11,8 +11,15 @@ import wandb
 import multiprocessing as mp
 
 
-def worker(project, group, name, config, mode, queue):
-    wandb.init(project=project, group=group, name=name, config=config, mode=mode)
+def worker(project, group, job_type, name, config, mode, queue):
+    wandb.init(
+        project=project,
+        group=group,
+        job_type=job_type,
+        name=name,
+        config=config,
+        mode=mode,
+    )
     try:
         while True:
             data = queue.get()
@@ -33,10 +40,11 @@ class WandbMultiLogger:
     self.queues keeps a queue for each process indexed by the same key (seed no.)
     """
 
-    def __init__(self, project, group, config, mode, num_seeds):
+    def __init__(self, project, group, job_type, config, mode, seed, num_seeds):
         wandb_settings = {
             "project": project,
             "group": group,
+            "job_type": job_type,
             "config": config,
             "mode": mode,
         }
@@ -45,7 +53,7 @@ class WandbMultiLogger:
         for i in range(num_seeds):
             q = mp.Queue()
             self.queues[i] = q
-            wandb_settings.update({"name": str(i), "queue": q})
+            wandb_settings.update({"name": f"{seed}_{i}", "queue": q})
             p = mp.Process(target=worker, kwargs=wandb_settings)
             p.start()
             self.processes[i] = p
