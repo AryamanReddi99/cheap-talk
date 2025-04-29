@@ -25,7 +25,7 @@ from jaxmarl.wrappers.baselines import SMAXLogWrapper, JaxMARLWrapper, SMAXLogEn
 from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
 import flax
 from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
-import time
+from cheap_talk.src.jax_experiments.utils.jax_utils import pytree_norm
 
 # env provides variables as dictionaries indexed by agent ids
 # e.g. obs, env_state = self._env.reset(key)
@@ -709,6 +709,8 @@ def make_train(config):
                             traj_batch,
                             advantages,
                         )
+                        actor_grad_norm = pytree_norm(actor_grads)
+
                         critic_grad_fn = jax.value_and_grad(
                             _critic_loss_fn, has_aux=True
                         )
@@ -718,6 +720,7 @@ def make_train(config):
                             traj_batch,
                             targets,
                         )
+                        critic_grad_norm = pytree_norm(critic_grads)
 
                         actor_train_state = actor_train_state.apply_gradients(
                             grads=actor_grads
@@ -735,6 +738,8 @@ def make_train(config):
                             "ratio": actor_loss[1][2],
                             "approx_kl": actor_loss[1][3],
                             "clip_frac": actor_loss[1][4],
+                            "actor_grad_norm": actor_grad_norm,
+                            "critic_grad_norm": critic_grad_norm,
                         }
 
                         return (actor_train_state, critic_train_state), loss_info
@@ -839,7 +844,25 @@ def make_train(config):
             )
 
             # DEBUG
-            jax.debug.print("actor k1 params: {}", actor_train_state.params)
+            jax.debug.print(
+                "actor k0 params: {}",
+                actor_params_k0["params"]["Dense_0"]["kernel"][0][:5],
+            )
+            jax.debug.print(
+                "actor k0 opt: {}",
+                actor_optimizer_k0,
+            )
+
+            jax.debug.print(
+                "actor k1 params: {}",
+                actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
+            )
+            jax.debug.print(
+                "actor k0 grad norm: {}", loss_info["actor_grad_norm"].mean()
+            )
+            jax.debug.print(
+                "actor k0 grad norm shape: {}", loss_info["actor_grad_norm"].shape
+            )
 
             # reset actor & critic to k0
             actor_train_state = actor_train_state.replace(
@@ -847,6 +870,11 @@ def make_train(config):
             )
             # critic_params_k1 = critic_train_state.params
             # critic_train_state = critic_train_state.replace(params=critic_params_k0)
+
+            jax.debug.print(
+                "actor params after k0 reset: {}",
+                actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
+            )
 
             def _update_step_k2(train_runner_state_k):
                 # save initial hidden states
@@ -1128,6 +1156,7 @@ def make_train(config):
                             advantages_stack,
                             loss_mask,
                         )
+                        actor_grad_norm_k = pytree_norm(actor_grads_k)
 
                         actor_train_state = actor_train_state.apply_gradients(
                             grads=actor_grads_k
@@ -1139,6 +1168,7 @@ def make_train(config):
                             "ratio_k": actor_loss_k[1][2],
                             "approx_kl_k": actor_loss_k[1][3],
                             "clip_frac_k": actor_loss_k[1][4],
+                            "actor_grad_norm_k": actor_grad_norm_k,
                         }
 
                         return (actor_train_state, critic_train_state), loss_info_k
@@ -1241,12 +1271,24 @@ def make_train(config):
             )
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
+            jax.debug.print(
+                "actor k2 params: {}",
+                train_runner_state_k.actor_train_state.params["params"]["Dense_0"][
+                    "kernel"
+                ][0][:5],
+            )
+
             # actor is now k2, need to give critic its update back
             # critic_train_state = critic_train_state.replace(params=critic_params_k1)
 
             actor_train_state = actor_train_state.replace(
-                params=actor_train_state_k.params,
-                opt_state=actor_train_state_k.opt_state,
+                params=train_runner_state_k.actor_train_state.params,
+                opt_state=actor_train_state.opt_state,
+            )
+
+            jax.debug.print(
+                "actor params final: {}",
+                actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
             )
 
             # Print to wandb
@@ -1289,6 +1331,13 @@ def make_train(config):
                 update_step=update_step,
                 rng=rng,
             )
+
+            jax.debug.print(
+                "actor params final 2: {}",
+                train_runner_state.actor_train_state.params["params"]["Dense_0"][
+                    "kernel"
+                ][0][:5],
+            )
             return train_runner_state, metric
 
         rng, _train_rng = jax.random.split(rng)
@@ -1311,7 +1360,7 @@ def make_train(config):
 
         # highest level runner state has 6 elements
         final_runner_state, metrics_batch = jax.lax.scan(
-            _train_loop, initial_runner_state, None, config["NUM_UPDATES"]
+            _train_loop, initial_runner_state, None, 1
         )
         return {"runner_state": final_runner_state}
 
@@ -1343,7 +1392,7 @@ def main(config):
         rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
         exp_ids = jnp.arange(config["NUM_SEEDS"])
 
-        print
+        print("Starting compile...")
         train_jit = jax.jit(make_train(config))
         out = jax.vmap(train_jit)(rng_seeds, exp_ids)
     finally:

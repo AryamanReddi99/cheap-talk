@@ -1,6 +1,6 @@
 "TOTAL_TIMESTEPS": 1e7
-"NUM_ENVS": 64 
-"NUM_STEPS": 128
+"NUM_ENVS": 2 # Small
+"NUM_STEPS": 5 # small
 "LR": 0.004
 "ANNEAL_LR": True
 "UPDATE_EPOCHS": 2
@@ -20,7 +20,7 @@
 "ENV_NAME": "HeuristicEnemySMAX"
 "MAP_NAME": "3s_vs_5z"
 "SEED": 0
-"NUM_SEEDS": 5
+"NUM_SEEDS": 1
 "ENV_KWARGS": 
   "see_enemy_actions": True
   "walls_cause_death": True
