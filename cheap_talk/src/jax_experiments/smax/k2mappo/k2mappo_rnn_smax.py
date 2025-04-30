@@ -847,8 +847,8 @@ def make_train(config):
             actor_train_state = actor_train_state.replace(
                 params=actor_params_k0, opt_state=actor_optimizer_k0
             )
-            critic_params_k1 = critic_train_state.params
-            critic_train_state = critic_train_state.replace(params=critic_params_k0)
+            # critic_params_k1 = critic_train_state.params
+            # critic_train_state = critic_train_state.replace(params=critic_params_k0)
 
             def _update_step_k2(train_runner_state_k):
                 # save initial hidden states
@@ -1246,7 +1246,7 @@ def make_train(config):
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
             # actor is now k2, need to give critic its update back
-            critic_train_state = critic_train_state.replace(params=critic_params_k1)
+            # critic_train_state = critic_train_state.replace(params=critic_params_k1)
 
             actor_train_state = actor_train_state.replace(
                 params=train_runner_state_k.actor_train_state.params,
@@ -1322,7 +1322,7 @@ def make_train(config):
     return train
 
 
-@hydra.main(version_base=None, config_path="./", config_name="config_debug")
+@hydra.main(version_base=None, config_path="./", config_name="config")
 def main(config):
     try:
         config = OmegaConf.to_container(config)
