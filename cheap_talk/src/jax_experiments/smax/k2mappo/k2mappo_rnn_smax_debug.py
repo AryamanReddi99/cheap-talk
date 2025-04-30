@@ -850,7 +850,11 @@ def make_train(config):
             )
             jax.debug.print(
                 "actor k0 opt: {}",
-                actor_optimizer_k0,
+                actor_optimizer_k0[1][0].mu["params"]["Dense_0"]["kernel"][0][:5],
+            )
+            jax.debug.print(
+                "critic k0 params: {}",
+                critic_params_k0["params"]["Dense_0"]["kernel"][0][:5],
             )
 
             jax.debug.print(
@@ -858,22 +862,36 @@ def make_train(config):
                 actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
             )
             jax.debug.print(
-                "actor k0 grad norm: {}", loss_info["actor_grad_norm"].mean()
+                "actor k1 opt: {}",
+                actor_train_state.opt_state[1][0].mu["params"]["Dense_0"]["kernel"][0][
+                    :5
+                ],
             )
             jax.debug.print(
-                "actor k0 grad norm shape: {}", loss_info["actor_grad_norm"].shape
+                "actor k1 grad norm: {}", loss_info["actor_grad_norm"].mean()
+            )
+            jax.debug.print(
+                "critic k1 params: {}",
+                critic_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
+            )
+            jax.debug.print(
+                "critic k1 grad norm: {}", loss_info["critic_grad_norm"].mean()
             )
 
             # reset actor & critic to k0
             actor_train_state = actor_train_state.replace(
                 params=actor_params_k0, opt_state=actor_optimizer_k0
             )
-            # critic_params_k1 = critic_train_state.params
-            # critic_train_state = critic_train_state.replace(params=critic_params_k0)
+            critic_params_k1 = critic_train_state.params
+            critic_train_state = critic_train_state.replace(params=critic_params_k0)
 
             jax.debug.print(
                 "actor params after k0 reset: {}",
                 actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
+            )
+            jax.debug.print(
+                "critic params after k0 reset: {}",
+                critic_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
             )
 
             def _update_step_k2(train_runner_state_k):
@@ -1279,11 +1297,20 @@ def make_train(config):
             )
 
             # actor is now k2, need to give critic its update back
-            # critic_train_state = critic_train_state.replace(params=critic_params_k1)
+            critic_train_state = critic_train_state.replace(params=critic_params_k1)
 
             actor_train_state = actor_train_state.replace(
                 params=train_runner_state_k.actor_train_state.params,
-                opt_state=actor_train_state.opt_state,
+                opt_state=train_runner_state_k.actor_train_state.opt_state,
+            )
+            jax.debug.print(
+                "actor k2 opt: {}",
+                actor_train_state.opt_state[1][0].mu["params"]["Dense_0"]["kernel"][0][
+                    :5
+                ],
+            )
+            jax.debug.print(
+                "actor k2 grad norm: {}", loss_info_k["actor_grad_norm_k"].mean()
             )
 
             jax.debug.print(
@@ -1335,6 +1362,12 @@ def make_train(config):
             jax.debug.print(
                 "actor params final 2: {}",
                 train_runner_state.actor_train_state.params["params"]["Dense_0"][
+                    "kernel"
+                ][0][:5],
+            )
+            jax.debug.print(
+                "critic params final: {}",
+                train_runner_state.critic_train_state.params["params"]["Dense_0"][
                     "kernel"
                 ][0][:5],
             )
