@@ -327,41 +327,41 @@ def make_train(config):
             if config["ANNEAL_LR"]:
                 actor_tx = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(learning_rate=linear_schedule, eps=1e-5),
+                    optax.rmsprop(learning_rate=linear_schedule, eps=1e-5),
                 )
                 critic_tx = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(learning_rate=linear_schedule, eps=1e-5),
+                    optax.rmsprop(learning_rate=linear_schedule, eps=1e-5),
                 )
 
                 # K optimizers (just for convenience)
                 actor_tx_k = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(learning_rate=linear_schedule, eps=1e-5),
+                    optax.rmsprop(learning_rate=linear_schedule, eps=1e-5),
                 )
                 critic_tx_k = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(learning_rate=linear_schedule, eps=1e-5),
+                    optax.rmsprop(learning_rate=linear_schedule, eps=1e-5),
                 )
 
             else:
                 actor_tx = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(config["LR"], eps=1e-5),
+                    optax.rmsprop(config["LR"], eps=1e-5),
                 )
                 critic_tx = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(config["LR"], eps=1e-5),
+                    optax.rmsprop(config["LR"], eps=1e-5),
                 )
 
                 # K
                 actor_tx_k = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(config["LR"], eps=1e-5),
+                    optax.rmsprop(config["LR"], eps=1e-5),
                 )
                 critic_tx_k = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(config["LR"], eps=1e-5),
+                    optax.rmsprop(config["LR"], eps=1e-5),
                 )
 
             # Train states
@@ -1328,8 +1328,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"K2MAPPO_K1_CRITIC_{config['MAP_NAME']}"
-        group = f"K2MAPPO_K1_CRITIC_{config['MAP_NAME']}"
+        job_type = f"K2MAPPO_K1CR_RMS_{config['MAP_NAME']}"
+        group = f"K2MAPPO_K1CR_RMS_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
