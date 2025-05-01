@@ -657,8 +657,8 @@ def make_train(config):
                                 )
                                 * gae
                             )
-                            loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
-                            loss_actor = loss_actor.mean()
+                            loss_actor_all = -jnp.minimum(loss_actor1, loss_actor2)
+                            loss_actor = loss_actor_all.mean()
                             entropy = pi.entropy().mean()
 
                             # debug
@@ -710,6 +710,11 @@ def make_train(config):
                             advantages,
                         )
                         actor_grad_norm = pytree_norm(actor_grads)
+
+                        jax.debug.print(
+                            "actor_grad_norm : {} ",
+                            actor_grad_norm,
+                        )
 
                         critic_grad_fn = jax.value_and_grad(
                             _critic_loss_fn, has_aux=True
@@ -1108,6 +1113,10 @@ def make_train(config):
                                     loss_actor_masked.sum() / count_mask,
                                     0,
                                 )
+
+                                # LOSS UNMASKED
+                                loss_actor_unmasked = loss_actor_all.mean()
+
                                 entropy_all = pi.entropy()
                                 entropy_masked = jnp.where(
                                     loss_mask > 0, entropy_all, 0
@@ -1118,7 +1127,6 @@ def make_train(config):
                                     0,
                                 )
 
-                                # debug
                                 approx_kl = (
                                     ((ratio - 1) - logratio) * loss_mask
                                 ).sum() / loss_mask.sum()
@@ -1135,6 +1143,7 @@ def make_train(config):
                                     ratio,
                                     approx_kl,
                                     clip_frac,
+                                    loss_actor_unmasked,
                                 )
 
                             total_actor_loss, loss_info = jax.vmap(
@@ -1147,16 +1156,11 @@ def make_train(config):
                                 loss_mask,
                                 jnp.arange(env.num_agents),
                             )
-                            jax.debug.print(
-                                "total_actor_loss {}",
-                                total_actor_loss,
-                            )
                             total_loss = total_actor_loss.sum()
 
-                            jax.debug.print(
-                                "total_loss {}",
-                                total_loss,
-                            )
+                            # debug
+                            total_actor_loss_unmasked = loss_info[5]
+                            total_loss_unmasked = total_actor_loss_unmasked.sum()
 
                             return total_loss, loss_info
 
@@ -1175,6 +1179,18 @@ def make_train(config):
                         jax.debug.print(
                             "actor_grad_norm_k {}",
                             actor_grad_norm_k,
+                        )
+
+                        if config["SCALE_ACTOR_GRAD"]:
+                            actor_grads_k = jax.tree.map(
+                                lambda x: x / env.num_agents, actor_grads_k
+                            )
+
+                        actor_grad_norm_k_scaled = pytree_norm(actor_grads_k)
+
+                        jax.debug.print(
+                            "actor_grad_norm_k scaled {}",
+                            actor_grad_norm_k_scaled,
                         )
 
                         actor_train_state = actor_train_state.apply_gradients(
@@ -1288,6 +1304,7 @@ def make_train(config):
                 update_step=update_step,
                 rng=_train_rng_k,
             )
+
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
             # actor is now k2, need to give critic its update back

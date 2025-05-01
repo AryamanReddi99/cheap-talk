@@ -1143,11 +1143,17 @@ def make_train(config):
                             advantages_stack,
                             loss_mask,
                         )
-                        actor_grad_norm_k = pytree_norm(actor_grads_k)
+
+                        if config["SCALE_ACTOR_GRAD"]:
+                            actor_grads_k = jax.tree.map(
+                                lambda x: x / env.num_agents, actor_grads_k
+                            )
 
                         actor_train_state = actor_train_state.apply_gradients(
                             grads=actor_grads_k
                         )
+
+                        actor_grad_norm_k = pytree_norm(actor_grads_k)
 
                         loss_info_k = {
                             "actor_loss_k": actor_loss_k[0],
