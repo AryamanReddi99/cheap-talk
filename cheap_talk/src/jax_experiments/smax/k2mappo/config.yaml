@@ -2,8 +2,8 @@
 "NUM_ENVS": 64 
 "NUM_STEPS": 128
 "LR": 0.004
-"ACTOR_OPTIMIZER": "rmsprop" # adam, rmsprop
-"CRITIC_OPTIMIZER": "rmsprop" # adam, rmsprop
+"ACTOR_OPTIMIZER": "adam" # adam, rmsprop
+"CRITIC_OPTIMIZER": "adam" # adam, rmsprop
 "ANNEAL_LR": True
 "UPDATE_EPOCHS": 2
 "NUM_MINIBATCHES": 2
@@ -23,7 +23,7 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "3s_vs_5z"
+"MAP_NAME": "3s5z_vs_3s6z"
 "SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 
@@ -34,4 +34,4 @@
 # WandB Params
 "PROJECT": "smax"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "disabled" # online, disabled
+"WANDB_MODE" : "online" # online, disabled

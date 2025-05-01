@@ -221,6 +221,8 @@ def make_train(config):
         return config["LR"] * frac
 
     def train(rng, exp_id):
+        jax.debug.print("Compile Finished. Running...")
+
         # INIT NETWORK
         actor_network = ActorRNN(env.action_space(env.agents[0]).n, config=config)
         critic_network = CriticRNN(config=config)
@@ -636,8 +638,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        group = f"MAPPO_ORIGINAL_{config['MAP_NAME']}"
-        job_type = f"MAPPO_ORIGINAL_{config['MAP_NAME']}"
+        group = f"MAPPO_{config['MAP_NAME']}"
+        job_type = f"MAPPO_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
@@ -653,9 +655,10 @@ def main(config):
         rng = jax.random.PRNGKey(config["SEED"])
         rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
         exp_ids = jnp.arange(config["NUM_SEEDS"])
+
+        print("Starting compile...")
         train_jit = jax.jit(make_train(config))
         out = jax.vmap(train_jit)(rng_seeds, exp_ids)
-
     finally:
         LOGGER.finish()
         print("Finished training.")
