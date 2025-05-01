@@ -1075,6 +1075,7 @@ def make_train(config):
                                 log_prob = pi.log_prob(traj_batch.action)
 
                                 # CALCULATE ACTOR LOSS
+                                count_mask = jax.lax.stop_gradient(loss_mask.sum())
                                 logratio = log_prob - traj_batch.log_prob
                                 ratio = jnp.exp(logratio)
                                 gae = (gae - gae.mean()) / (gae.std() + 1e-8)
@@ -1088,11 +1089,23 @@ def make_train(config):
                                     * gae
                                 )
                                 loss_actor_all = -jnp.minimum(loss_actor1, loss_actor2)
-                                loss_actor_masked = loss_actor_all * loss_mask
-                                loss_actor = loss_actor_masked.sum() / loss_mask.sum()
+                                loss_actor_masked = jnp.where(
+                                    loss_mask > 0, loss_actor_all, 0
+                                )
+                                loss_actor = jnp.where(
+                                    count_mask > 0,
+                                    loss_actor_masked.sum() / count_mask,
+                                    0,
+                                )
                                 entropy_all = pi.entropy()
-                                entropy_masked = entropy_all * loss_mask
-                                entropy = entropy_masked.sum() / loss_mask.sum()
+                                entropy_masked = jnp.where(
+                                    loss_mask > 0, entropy_all, 0
+                                )
+                                entropy = jnp.where(
+                                    count_mask > 0,
+                                    entropy_masked.sum() / count_mask,
+                                    0,
+                                )
 
                                 # debug
                                 approx_kl = (
@@ -1328,8 +1341,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"K2MAPPO_K1CR_RMS_{config['MAP_NAME']}"
-        group = f"K2MAPPO_K1CR_RMS_{config['MAP_NAME']}"
+        job_type = f"K2MAPPO_K1CR_NEWLOSS_{config['MAP_NAME']}"
+        group = f"K2MAPPO_K1CR_NEWLOSS_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER

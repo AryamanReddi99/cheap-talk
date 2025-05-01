@@ -844,55 +844,17 @@ def make_train(config):
             )
 
             # DEBUG
-            jax.debug.print(
-                "actor k0 params: {}",
-                actor_params_k0["params"]["Dense_0"]["kernel"][0][:5],
-            )
-            jax.debug.print(
-                "actor k0 opt: {}",
-                actor_optimizer_k0[1][0].mu["params"]["Dense_0"]["kernel"][0][:5],
-            )
-            jax.debug.print(
-                "critic k0 params: {}",
-                critic_params_k0["params"]["Dense_0"]["kernel"][0][:5],
-            )
-
-            jax.debug.print(
-                "actor k1 params: {}",
-                actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
-            )
-            jax.debug.print(
-                "actor k1 opt: {}",
-                actor_train_state.opt_state[1][0].mu["params"]["Dense_0"]["kernel"][0][
-                    :5
-                ],
-            )
-            jax.debug.print(
-                "actor k1 grad norm: {}", loss_info["actor_grad_norm"].mean()
-            )
-            jax.debug.print(
-                "critic k1 params: {}",
-                critic_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
-            )
-            jax.debug.print(
-                "critic k1 grad norm: {}", loss_info["critic_grad_norm"].mean()
-            )
+            # jax.debug.print(
+            #     "actor k0 params: {}",
+            #     actor_params_k0["params"]["Dense_0"]["kernel"][0][:5],
+            # )
 
             # reset actor & critic to k0
             actor_train_state = actor_train_state.replace(
                 params=actor_params_k0, opt_state=actor_optimizer_k0
             )
-            critic_params_k1 = critic_train_state.params
-            critic_train_state = critic_train_state.replace(params=critic_params_k0)
-
-            jax.debug.print(
-                "actor params after k0 reset: {}",
-                actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
-            )
-            jax.debug.print(
-                "critic params after k0 reset: {}",
-                critic_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
-            )
+            # critic_params_k1 = critic_train_state.params
+            # critic_train_state = critic_train_state.replace(params=critic_params_k0)
 
             def _update_step_k2(train_runner_state_k):
                 # save initial hidden states
@@ -1104,7 +1066,12 @@ def make_train(config):
                             actor_params, init_hstate, traj_batch, gae, loss_mask
                         ):
                             def _actor_loss(
-                                actor_params, init_hstate, traj_batch, gae, loss_mask
+                                actor_params,
+                                init_hstate,
+                                traj_batch,
+                                gae,
+                                loss_mask,
+                                agent_idx,
                             ):
                                 # RERUN NETWORK
                                 _, pi = actor_network.apply(
@@ -1119,6 +1086,7 @@ def make_train(config):
                                 log_prob = pi.log_prob(traj_batch.action)
 
                                 # CALCULATE ACTOR LOSS
+                                count_mask = jax.lax.stop_gradient(loss_mask.sum())
                                 logratio = log_prob - traj_batch.log_prob
                                 ratio = jnp.exp(logratio)
                                 gae = (gae - gae.mean()) / (gae.std() + 1e-8)
@@ -1132,11 +1100,23 @@ def make_train(config):
                                     * gae
                                 )
                                 loss_actor_all = -jnp.minimum(loss_actor1, loss_actor2)
-                                loss_actor_masked = loss_actor_all * loss_mask
-                                loss_actor = loss_actor_masked.sum() / loss_mask.sum()
+                                loss_actor_masked = jnp.where(
+                                    loss_mask > 0, loss_actor_all, 0
+                                )
+                                loss_actor = jnp.where(
+                                    count_mask > 0,
+                                    loss_actor_masked.sum() / count_mask,
+                                    0,
+                                )
                                 entropy_all = pi.entropy()
-                                entropy_masked = entropy_all * loss_mask
-                                entropy = entropy_masked.sum() / loss_mask.sum()
+                                entropy_masked = jnp.where(
+                                    loss_mask > 0, entropy_all, 0
+                                )
+                                entropy = jnp.where(
+                                    count_mask > 0,
+                                    entropy_masked.sum() / count_mask,
+                                    0,
+                                )
 
                                 # debug
                                 approx_kl = (
@@ -1158,9 +1138,25 @@ def make_train(config):
                                 )
 
                             total_actor_loss, loss_info = jax.vmap(
-                                _actor_loss, in_axes=(None, None, 0, 0, 0)
-                            )(actor_params, init_hstate, traj_batch, gae, loss_mask)
+                                _actor_loss, in_axes=(None, None, 0, 0, 0, 0)
+                            )(
+                                actor_params,
+                                init_hstate,
+                                traj_batch,
+                                gae,
+                                loss_mask,
+                                jnp.arange(env.num_agents),
+                            )
+                            jax.debug.print(
+                                "total_actor_loss {}",
+                                total_actor_loss,
+                            )
                             total_loss = total_actor_loss.sum()
+
+                            jax.debug.print(
+                                "total_loss {}",
+                                total_loss,
+                            )
 
                             return total_loss, loss_info
 
@@ -1175,6 +1171,11 @@ def make_train(config):
                             loss_mask,
                         )
                         actor_grad_norm_k = pytree_norm(actor_grads_k)
+
+                        jax.debug.print(
+                            "actor_grad_norm_k {}",
+                            actor_grad_norm_k,
+                        )
 
                         actor_train_state = actor_train_state.apply_gradients(
                             grads=actor_grads_k
@@ -1289,33 +1290,12 @@ def make_train(config):
             )
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
-            jax.debug.print(
-                "actor k2 params: {}",
-                train_runner_state_k.actor_train_state.params["params"]["Dense_0"][
-                    "kernel"
-                ][0][:5],
-            )
-
             # actor is now k2, need to give critic its update back
-            critic_train_state = critic_train_state.replace(params=critic_params_k1)
+            # critic_train_state = critic_train_state.replace(params=critic_params_k1)
 
             actor_train_state = actor_train_state.replace(
                 params=train_runner_state_k.actor_train_state.params,
                 opt_state=train_runner_state_k.actor_train_state.opt_state,
-            )
-            jax.debug.print(
-                "actor k2 opt: {}",
-                actor_train_state.opt_state[1][0].mu["params"]["Dense_0"]["kernel"][0][
-                    :5
-                ],
-            )
-            jax.debug.print(
-                "actor k2 grad norm: {}", loss_info_k["actor_grad_norm_k"].mean()
-            )
-
-            jax.debug.print(
-                "actor params final: {}",
-                actor_train_state.params["params"]["Dense_0"]["kernel"][0][:5],
             )
 
             # Print to wandb
@@ -1357,19 +1337,6 @@ def make_train(config):
                 critic_train_state=critic_train_state,
                 update_step=update_step,
                 rng=rng,
-            )
-
-            jax.debug.print(
-                "actor params final 2: {}",
-                train_runner_state.actor_train_state.params["params"]["Dense_0"][
-                    "kernel"
-                ][0][:5],
-            )
-            jax.debug.print(
-                "critic params final: {}",
-                train_runner_state.critic_train_state.params["params"]["Dense_0"][
-                    "kernel"
-                ][0][:5],
             )
             return train_runner_state, metric
 
