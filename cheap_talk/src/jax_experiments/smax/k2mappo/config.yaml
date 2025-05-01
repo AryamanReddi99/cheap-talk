@@ -2,8 +2,8 @@
 "NUM_ENVS": 64 
 "NUM_STEPS": 128
 "LR": 0.004
-"ACTOR_OPTIMIZER": "adam" # adam, rmsprop
-"CRITIC_OPTIMIZER": "adam" # adam, rmsprop
+"ACTOR_OPTIMIZER": "rmsprop" # adam, rmsprop
+"CRITIC_OPTIMIZER": "rmsprop" # adam, rmsprop
 "ANNEAL_LR": True
 "UPDATE_EPOCHS": 2
 "NUM_MINIBATCHES": 2
@@ -24,8 +24,8 @@
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
 "MAP_NAME": "3s_vs_5z"
-"SEED": 1
-"NUM_SEEDS": 1
+"SEED": 0
+"NUM_SEEDS": 5
 "ENV_KWARGS": 
   "see_enemy_actions": True
   "walls_cause_death": True
