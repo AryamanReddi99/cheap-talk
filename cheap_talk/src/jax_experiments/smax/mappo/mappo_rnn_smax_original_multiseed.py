@@ -22,6 +22,7 @@ from functools import partial
 from jaxmarl.wrappers.baselines import SMAXLogWrapper, JaxMARLWrapper
 from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
 from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
+from cheap_talk.src.jax_experiments.utils.jax_utils import pytree_norm
 
 
 class SMAXWorldStateWrapper(JaxMARLWrapper):
@@ -488,10 +489,12 @@ def make_train(config):
                     actor_loss, actor_grads = actor_grad_fn(
                         actor_train_state.params, ac_init_hstate, traj_batch, advantages
                     )
+                    actor_grad_norm = pytree_norm(actor_grads)
                     critic_grad_fn = jax.value_and_grad(_critic_loss_fn, has_aux=True)
                     critic_loss, critic_grads = critic_grad_fn(
                         critic_train_state.params, cr_init_hstate, traj_batch, targets
                     )
+                    critic_grad_norm = pytree_norm(critic_grads)
 
                     actor_train_state = actor_train_state.apply_gradients(
                         grads=actor_grads
@@ -509,6 +512,8 @@ def make_train(config):
                         "ratio": actor_loss[1][2],
                         "approx_kl": actor_loss[1][3],
                         "clip_frac": actor_loss[1][4],
+                        "actor_grad_norm": actor_grad_norm,
+                        "critic_grad_norm": critic_grad_norm,
                     }
 
                     return (actor_train_state, critic_train_state), loss_info
