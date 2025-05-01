@@ -847,8 +847,8 @@ def make_train(config):
             actor_train_state = actor_train_state.replace(
                 params=actor_params_k0, opt_state=actor_optimizer_k0
             )
-            # critic_params_k1 = critic_train_state.params
-            # critic_train_state = critic_train_state.replace(params=critic_params_k0)
+            critic_params_k1 = critic_train_state.params
+            critic_train_state = critic_train_state.replace(params=critic_params_k0)
 
             def _update_step_k2(train_runner_state_k):
                 # save initial hidden states
@@ -1217,7 +1217,7 @@ def make_train(config):
                     )
                     return update_state, loss_info
 
-                update_state_k = UpdateRunnerState(
+                initial_update_state_k = UpdateRunnerState(
                     actor_train_state=train_runner_state_k.actor_train_state,
                     critic_train_state=train_runner_state_k.critic_train_state,
                     traj_batch=traj_batch_stack,
@@ -1228,15 +1228,15 @@ def make_train(config):
                     rng=train_runner_state_k.rng,
                 )
 
-                update_state_k, loss_info_k = jax.lax.scan(
-                    _update_epoch, update_state_k, None, config["UPDATE_EPOCHS"]
+                final_update_state_k, loss_info_k = jax.lax.scan(
+                    _update_epoch, initial_update_state_k, None, config["UPDATE_EPOCHS"]
                 )
                 loss_info_k["ratio_0_k"] = loss_info_k["ratio_k"].at[0, 0, :].get()
                 loss_info_k = jax.tree.map(lambda x: x.mean(), loss_info_k)
 
                 train_runner_state_k = train_runner_state_k.replace(
-                    actor_train_state=update_state_k.actor_train_state,
-                    rng=update_state_k.rng,
+                    actor_train_state=final_update_state_k.actor_train_state,
+                    rng=final_update_state_k.rng,
                 )
                 return train_runner_state_k, loss_info_k
 
@@ -1259,7 +1259,7 @@ def make_train(config):
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
             # actor is now k2, need to give critic its update back
-            # critic_train_state = critic_train_state.replace(params=critic_params_k1)
+            critic_train_state = critic_train_state.replace(params=critic_params_k1)
 
             actor_train_state = actor_train_state.replace(
                 params=train_runner_state_k.actor_train_state.params,
@@ -1341,8 +1341,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"K2MAPPO_K1CR_ADAM_NEWLOSS_{config['MAP_NAME']}"
-        group = f"K2MAPPO_K1CR_ADAM_NEWLOSS_{config['MAP_NAME']}"
+        job_type = f"K2MAPPO_K0CR_ADAM_NEWLOSS_{config['MAP_NAME']}"
+        group = f"K2MAPPO_K0CR_ADAM_NEWLOSS_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
