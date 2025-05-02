@@ -823,6 +823,10 @@ def make_train(config):
                 # Reset networks to K0
                 actor_train_state = actor_train_state.replace(params=actor_params_k0)
                 critic_train_state = critic_train_state.replace(params=critic_params_k0)
+                final_update_state = final_update_state.replace(
+                    actor_train_state=actor_train_state,
+                    critic_train_state=critic_train_state,
+                )
 
                 def _update_epoch_k2(update_state, unused):
                     def _update_minibatch_k2(train_states, minibatch):
