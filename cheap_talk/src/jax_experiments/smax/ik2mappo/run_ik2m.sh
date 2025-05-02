@@ -1,0 +1,1 @@
+sbatch -t 00:30:00 -c 1 --mem-per-cpu=7G -p gpu --gres=gpu:1 "python k2mappo_rnn_smax.py"

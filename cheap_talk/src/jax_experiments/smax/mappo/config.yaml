@@ -18,9 +18,9 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "3s5z_vs_3s6z"
+"MAP_NAME": "smacv2_10_units"
 "SEED": 0
-"NUM_SEEDS": 5
+"NUM_SEEDS": 1
 "ENV_KWARGS": 
   "see_enemy_actions": True
   "walls_cause_death": True

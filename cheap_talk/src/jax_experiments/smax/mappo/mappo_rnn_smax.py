@@ -568,6 +568,8 @@ def make_train(config):
                         grads=critic_grads
                     )
 
+                    # K2 update
+
                     total_loss = actor_loss[0] + critic_loss[0]
                     loss_info = {
                         "total_loss": total_loss,
