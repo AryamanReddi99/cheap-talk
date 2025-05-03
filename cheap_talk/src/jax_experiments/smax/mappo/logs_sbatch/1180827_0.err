@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/reddi/project-cheap/cheap-talk/cheap_talk/src/jax_experiments/smax/mappo/mappo_rnn_smax_original_multiseed.py", line 24, in <module>
+    from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
+ModuleNotFoundError: No module named 'cheap_talk'

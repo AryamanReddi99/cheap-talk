@@ -1,0 +1,225 @@
+/home/reddi/miniconda3/envs/cheap/lib/python3.11/multiprocessing/popen_fork.py:66: RuntimeWarning: os.fork() was called. os.fork() is incompatible with multithreaded code, and JAX is multithreaded, so this will likely lead to a deadlock.
+  self.pid = os.fork()
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Currently logged in as: aryaman-reddi (tu-darmstadt-literl) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: aryaman-reddi (tu-darmstadt-literl) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: aryaman-reddi (tu-darmstadt-literl) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: aryaman-reddi (tu-darmstadt-literl) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: aryaman-reddi (tu-darmstadt-literl) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.19.9
+wandb: Run data is saved locally in /home/reddi/project-cheap/cheap-talk/cheap_talk/src/jax_experiments/smax/mappo/wandb/run-20250502_031341-o0dk0gz7
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run 1_2
+wandb: ⭐️ View project at https://wandb.ai/tu-darmstadt-literl/smax
+wandb: 🚀 View run at https://wandb.ai/tu-darmstadt-literl/smax/runs/o0dk0gz7
+wandb: Tracking run with wandb version 0.19.9
+wandb: Run data is saved locally in /home/reddi/project-cheap/cheap-talk/cheap_talk/src/jax_experiments/smax/mappo/wandb/run-20250502_031341-w5k3i26l
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run 1_3
+wandb: ⭐️ View project at https://wandb.ai/tu-darmstadt-literl/smax
+wandb: 🚀 View run at https://wandb.ai/tu-darmstadt-literl/smax/runs/w5k3i26l
+wandb: Tracking run with wandb version 0.19.9
+wandb: Run data is saved locally in /home/reddi/project-cheap/cheap-talk/cheap_talk/src/jax_experiments/smax/mappo/wandb/run-20250502_031341-usiogj0d
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run 1_1
+wandb: ⭐️ View project at https://wandb.ai/tu-darmstadt-literl/smax
+wandb: 🚀 View run at https://wandb.ai/tu-darmstadt-literl/smax/runs/usiogj0d
+wandb: Tracking run with wandb version 0.19.9
+wandb: Run data is saved locally in /home/reddi/project-cheap/cheap-talk/cheap_talk/src/jax_experiments/smax/mappo/wandb/run-20250502_031341-2c2yl98c
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run 1_0
+wandb: ⭐️ View project at https://wandb.ai/tu-darmstadt-literl/smax
+wandb: 🚀 View run at https://wandb.ai/tu-darmstadt-literl/smax/runs/2c2yl98c
+wandb: creating run
+wandb: Tracking run with wandb version 0.19.9
+wandb: Run data is saved locally in /home/reddi/project-cheap/cheap-talk/cheap_talk/src/jax_experiments/smax/mappo/wandb/run-20250502_031341-w7ayze5a
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run 1_4
+wandb: ⭐️ View project at https://wandb.ai/tu-darmstadt-literl/smax
+wandb: 🚀 View run at https://wandb.ai/tu-darmstadt-literl/smax/runs/w7ayze5a
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:  actor_grad_norm ▃▄▂▅▃▄▃▂▂▂▁▂▁▂▃▄▃▄▂▁▃▁▂▄▆▁▂▁▁▂█▃▃▃▆▃▅▃▄▂
+wandb:       actor_loss ▁▅█▄▇▃▃▄▅▃▅▂▃█▂▇▃▄▂▃▅▃▃▅▂▃█▂▃▃▆▃▂▃▄▆▄▄▄▅
+wandb:        approx_kl █▅▂▄▃▂▂▃▂▂▃▂▂▂▂▂▂▅▂▂▂▂▂▂▂▂▁▁▂▃▁▁▁▁▁▁▁▁▁▁
+wandb:        clip_frac █▅▆▅▅▅▃▃▅▃▃▆▄▄▄▃▃▂▃▃▄▄█▅▃▃▃▃▄▄▄▃▃▂▂▁▁▁▁▁
+wandb: critic_grad_norm █▁▃▂▂▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁▁▁▂▁▁▂
+wandb:          entropy █▅▅▃▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         env_step ▁▂▂▂▂▃▃▃▃▃▃▃▄▄▄▄▄▄▅▅▅▅▅▆▆▆▆▆▆▆▆▆▇▇▇▇████
+wandb:            ratio █▅▅▂▄▇▄▃▃▂▃▂▃▅▃▇▆▅▁▅▅▅▅▁▃▃▅▅▄▄▅▄▆▄▅▃▅▅▄▅
+wandb:          ratio_0 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:           return ▁▁▁▂▂▂▂▂▂▂▂▂▂▂▂▂▂▄▃▃▃▃▃▄▄▅▅▄▅▄▄▅▅▅▅▅▅▇██
+wandb:       total_loss ▁▄▃▃▃▂▃▂▂▃▂▂▂▂▃▃▄▄▄▄▃▃▄▄▄▄▅▅▅▅▆▇▇▆▇▆▇█▇█
+wandb:       value_loss ▃▁▁▂▂▁▂▁▁▂▁▁▁▁▁▁▁▁▁▁▁▂▃▂▃▄▄▄▃▃▆▄▆▆▇▇▇███
+wandb:         win_rate ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▂▃▂▂▂▄▄▃▄▄▅▄▅▄▄▄▅▄▅█
+wandb: 
+wandb: Run summary:
+wandb:  actor_grad_norm 0.07415
+wandb:       actor_loss 0.0
+wandb:        approx_kl 0.0
+wandb:        clip_frac 0
+wandb: critic_grad_norm 0.02706
+wandb:          entropy 0.05613
+wandb:         env_step 9986048
+wandb:            ratio 1.0
+wandb:          ratio_0 1
+wandb:           return 1.19164
+wandb:       total_loss 0.00436
+wandb:       value_loss 0.00436
+wandb:         win_rate 0.31193
+wandb: 
+wandb: 🚀 View run 1_0 at: https://wandb.ai/tu-darmstadt-literl/smax/runs/2c2yl98c
+wandb: ⭐️ View project at: https://wandb.ai/tu-darmstadt-literl/smax
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20250502_031341-2c2yl98c/logs
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:  actor_grad_norm ▆███▃▃▅▆▃▃▃▂▂▂▂▁▂▂▂▁▃▂▂▂▂▁▃▁▁▁▁▁▂▂▂▁▁▁▁▂
+wandb:       actor_loss ▄▅█▁▃▄▂▅▃▃▃▃▃▄▂▃▂▂▃▂▃▄▃▅▂▂▂▂▂▄▃▂▄▃▄▂▃▄▄▄
+wandb:        approx_kl ▃▄█▄▄▃▆▄▃▄▂▂▇▂▂▂▂▂▃▂▂▃▂▃▂▂▂▁▂▂▁▁▁▂▁▁▁▁▁▁
+wandb:        clip_frac █▄▄▁▂▃▃▂▂▂▂▁▂▂▁▁▁▃▁▁▂▁▁▁▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: critic_grad_norm █▅▇▇▇▄▆▅▄▅▃▂▁▃▅▂▄▂▂▃▃▂▄▂▃▁▃▁▂▃▄▁▂▂▂▂▁▁▂▄
+wandb:          entropy █▄▃▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         env_step ▁▁▁▁▂▂▂▂▂▂▂▂▃▃▄▄▄▄▄▄▄▄▄▅▅▅▅▅▆▆▆▆▇▇▇▇▇███
+wandb:            ratio █▃▇▆▅▅▁▆▃▃▄▃▅█▅▄▅▂▄▆▇▅▅▅▅▁▅▃▆▄▃▅▅▄▄▄▄▅▄▅
+wandb:          ratio_0 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:           return ▁▂▃▃▄▄▄▄▄▅▅▄▄▄▅▅▅▅▄▅▄▅▅▅▅▅▆▆▇▆▅▇▅▆█▇█▇▇▆
+wandb:       total_loss ▂▁▁▂▁▂▃▂▁▃▂▂▂▁▃▄▂▂▃▂▃▃▄▃▅▄▅▆▅▅▆▄▄▅▆█▅▇▇▅
+wandb:       value_loss ▂▁▂▁▂▂▂▁▁▂▂▃▂▂▃▃▄▃▃▂▆▄▃▃▄▆▆▅▅█▇▆▅▆▆▆▆█▆▆
+wandb:         win_rate ▁▁▁▁▁▁▁▁▁▁▁▁▂▃▁▂▃▁▂▂▁▃▃▃▄▄▁▄▃▃▅▂▂▅▇▄▅▅█▅
+wandb: 
+wandb: Run summary:
+wandb:  actor_grad_norm 0.04019
+wandb:       actor_loss -0.0
+wandb:        approx_kl 0.0
+wandb:        clip_frac 0
+wandb: critic_grad_norm 0.01138
+wandb:          entropy 0.01729
+wandb:         env_step 9986048
+wandb:            ratio 1
+wandb:          ratio_0 1
+wandb:           return 0.84936
+wandb:       total_loss 0.00176
+wandb:       value_loss 0.00176
+wandb:         win_rate 0.07438
+wandb: 
+wandb: 🚀 View run 1_3 at: https://wandb.ai/tu-darmstadt-literl/smax/runs/w5k3i26l
+wandb: ⭐️ View project at: https://wandb.ai/tu-darmstadt-literl/smax
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20250502_031341-w5k3i26l/logs
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:  actor_grad_norm ▃▃██▆▆▆▆▄▄▃▃▇▆▃▄▅▆▅▆▃▃▅▂▃▄▃▂▂▃▃▂▂▃▁▂▂▄▄▁
+wandb:       actor_loss ▁▃█▆█▆▇█▅▅▆█▆▆▅▆▅▅▅▄▅▆▅▅▂▅▅▅▅▆▅▆▅▅▅▅▅▅▅▆
+wandb:        approx_kl ▂▅▆▅█▂▂▂▂▂▁▃▂▂▂▃▂▂▁▆▁▂▁▁▁▁▁▃▂▁▂▁▁▁▁▁▁▁▁▁
+wandb:        clip_frac █▃▄▄▂▂▂▃▃▂▂▂▂▃▂▂▂▂▃▂▂▂▁▁▂▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: critic_grad_norm ▅▅▄█▃▅▇▃▃▃▃▃▃▃▁▃▂▁▂▃▂▂▂▁▁▄▂▁▂▂▂▂▂▂▂▃▂▁▂▁
+wandb:          entropy █▆▅▄▄▃▃▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         env_step ▁▁▁▁▂▂▂▂▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▇▇▇▇▇▇▇▇█████
+wandb:            ratio ▇█▃▄▆▆█▅▅▃▄▅▆▄▁▅▆▄█▆▇▅▃▅▇▅▆▃▅▆▅▅▆▆▇▆▆▅▆▆
+wandb:          ratio_0 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:           return ▁▄▅▆▅▅▆▆▆▆▆▇▇▆▆▇█▇█▆▇▇▇▇█▇█▇▇▇█▇▇▇▇▇▇▇█▇
+wandb:       total_loss █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:       value_loss █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         win_rate ▁▁▁▁▁▂▁▁▁▂▁▂▃▄▃▅▄▆▄▃▂█▃▅█▂▇▂▃▇▆▂▅▄▄▁▆▆▃▅
+wandb: 
+wandb: Run summary:
+wandb:  actor_grad_norm 0.03498
+wandb:       actor_loss -0.0
+wandb:        approx_kl 0.0
+wandb:        clip_frac 0
+wandb: critic_grad_norm 0.02143
+wandb:          entropy 0.01612
+wandb:         env_step 9986048
+wandb:            ratio 1.0
+wandb:          ratio_0 1
+wandb:           return 0.79425
+wandb:       total_loss 0.0015
+wandb:       value_loss 0.00151
+wandb:         win_rate 0.04065
+wandb: 
+wandb: 🚀 View run 1_4 at: https://wandb.ai/tu-darmstadt-literl/smax/runs/w7ayze5a
+wandb: ⭐️ View project at: https://wandb.ai/tu-darmstadt-literl/smax
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20250502_031341-w7ayze5a/logs
+wandb: uploading output.log; uploading config.yaml
+wandb: uploading wandb-summary.json; uploading config.yaml
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:  actor_grad_norm ▁▁▃▃▂▄▂▂▄█▂▅▃▄▃▅▃▄▅▅▂▅▃▄▃▂▃▄▄▃▃▃▃▃▃▅▄▃▃▂
+wandb:       actor_loss ▃█▃▃▂▂▁▁▂▂▂█▃▃▂▄█▃▃▄▂▂▂▂▂▂▂▂▂▂▂▂▃▃▃▃▃▂▃▃
+wandb:        approx_kl █▄▃▄▃▃▃▂▃▂▅▃▃▄▃▄▄▂▃▃▂▂▃▂▃▂▂▂▃▂▂▁▂▂▂▁▁▁▁▁
+wandb:        clip_frac █▃▂▄▄▃▃▂▂▂▂▃▂▃▂▄▂▂▂▂▂▂▂▃▂▂▂▂▂▁▁▂▁▂▁▂▁▁▂▁
+wandb: critic_grad_norm ▁▂▁▁▄▁▁▃█▇▂▁▁▃▁▃▁▂▆▂▂▃▂▂▄▃▄▂▅▂▄▂▂▄▂▃▆▃▄▄
+wandb:          entropy █▆▅▃▂▂▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         env_step ▁▁▁▂▂▂▂▃▃▃▃▄▄▄▄▅▅▅▅▅▅▅▆▆▆▆▆▆▆▆▇▇▇▇▇▇▇▇██
+wandb:            ratio ▄▂▄▆█▁▅▅▅▁▄▃▄▆▇▄▄▄▂▆▃▅▄▅▅▄▅▂▆▄▆▅▅▄▄▄▄▄▅▅
+wandb:          ratio_0 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:           return ▁▁▂▂▂▂▂▂▂▂▂▂▃▃▂▂▃▃▃▄▄▃▃▃▃▅▅▅▄▅▅▆▅▆▇▇█▇▇▇
+wandb:       total_loss ▁▁▁▁▃▁▃▁▂▂▂▃▂▁▂▃▃▄▃▃▄▄▅▅▅▆▅▇▅▇▆▇▆▇▇█▇▆▇▇
+wandb:       value_loss ▂▁▁▁▂▁▂▁▁▁▂▁▂▂▂▃▄▄▄▅▅▄▆▇▆▆▇▆▆▇▆▇█▆█▇▆▇▇▇
+wandb:         win_rate ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▂▂▂▂▂▂▂▃▃▄▃▄▄▄▅▆▅▆▇██▇▇█
+wandb: 
+wandb: Run summary:
+wandb:  actor_grad_norm 0.09755
+wandb:       actor_loss -0.0
+wandb:        approx_kl 0.0
+wandb:        clip_frac 0
+wandb: critic_grad_norm 0.02045
+wandb:          entropy 0.07078
+wandb:         env_step 9986048
+wandb:            ratio 1.0
+wandb:          ratio_0 1
+wandb:           return 1.41815
+wandb:       total_loss 0.004
+wandb:       value_loss 0.004
+wandb:         win_rate 0.49038
+wandb: 
+wandb: 🚀 View run 1_2 at: https://wandb.ai/tu-darmstadt-literl/smax/runs/o0dk0gz7
+wandb: ⭐️ View project at: https://wandb.ai/tu-darmstadt-literl/smax
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20250502_031341-o0dk0gz7/logs
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:  actor_grad_norm ▁▁▄█▇▆▆▅▃▆▃▃▂▃▂▁▅▃▂▂▂▁▁▂▃▂▂▂▂▃▃▃▃▅▃▂▅▅▃▂
+wandb:       actor_loss ▄▂▁▆▅▄▃▂▆▂▃▅▂▅█▃▄▄▃▄▃▃▂▃▃▂▅▃▃▂▃▇▃▄▃▃▅▃▃▄
+wandb:        approx_kl █▄▂▃▂▂▂▂▂▂▂▂▂▂▂▂▁▂▁▁▃▁▂▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        clip_frac █▇▆▃▃▂▄▅▄▅▃▃▃▃▃▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▁▁▂▂▁▁▁
+wandb: critic_grad_norm ▂▄█▃▆▃▄▁▁▂▂▁▂▂▂▂▁▁▂▂▂▁▁▂▁▁▁▂▂▁▂▂▁▁▁▁▂▁▁▁
+wandb:          entropy █▆▅▄▄▄▃▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         env_step ▁▁▁▁▁▂▂▂▃▃▃▃▄▄▄▄▅▅▅▅▅▆▆▆▆▆▆▆▆▆▆▇▇▇▇▇▇███
+wandb:            ratio ▇▃█▁▁▆▅▄▅▅█▅▆▇▅▅▆▇▂▇▄▄▅▆▄▇▆▄▄█▄▅▃▇▇▄▆▆▇▆
+wandb:          ratio_0 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:           return ▁▁▁▂▂▂▃▃▃▂▃▃▃▃▃▃▃▄▄▄▄▄▅▄▄▅▅▅▆▆▇█▆▇▇▇▇█▇▇
+wandb:       total_loss ▁▂▂▁▁▁▁▃▂▂▃▂▂▄▂▂▃▄▂▄▃▃▃▅▄▅▄▅▄▆▅▇▅▅█▇▇███
+wandb:       value_loss █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▂▁▂▂▁▁▂▁▁▂▂▁▂▂▂▂▂▃▃▃▃▂
+wandb:         win_rate ▁▁▁▁▁▁▁▁▁▂▂▂▁▁▂▂▁▂▁▂▃▂▂▄▂▂▂▃▄▃▅▅▅▅▆▇▆█▅█
+wandb: 
+wandb: Run summary:
+wandb:  actor_grad_norm 0.06263
+wandb:       actor_loss 0.0
+wandb:        approx_kl 0.0
+wandb:        clip_frac 0
+wandb: critic_grad_norm 0.02134
+wandb:          entropy 0.04871
+wandb:         env_step 9986048
+wandb:            ratio 1.0
+wandb:          ratio_0 1
+wandb:           return 1.01276
+wandb:       total_loss 0.00369
+wandb:       value_loss 0.00369
+wandb:         win_rate 0.17544
+wandb: 
+wandb: 🚀 View run 1_1 at: https://wandb.ai/tu-darmstadt-literl/smax/runs/usiogj0d
+wandb: ⭐️ View project at: https://wandb.ai/tu-darmstadt-literl/smax
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20250502_031341-usiogj0d/logs
