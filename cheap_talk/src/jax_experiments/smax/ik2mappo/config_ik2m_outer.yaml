@@ -21,7 +21,7 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "3s_vs_5z"
+"MAP_NAME": "5m_vs_6m"
 "SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 

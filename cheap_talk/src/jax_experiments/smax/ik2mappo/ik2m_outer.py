@@ -780,6 +780,7 @@ def make_train(config):
                         actor_hidden_state_init,
                         traj_batch,
                         advantages,
+                        log_prob_k0,
                         log_prob_k0_joint,
                         log_prob_k1,
                         log_prob_k1_joint,
@@ -790,6 +791,7 @@ def make_train(config):
                         actor_hidden_state_init,
                         traj_batch,
                         gae,
+                        log_prob_k0,
                         log_prob_k0_joint,
                         log_prob_k1,
                         log_prob_k1_joint,
@@ -809,10 +811,21 @@ def make_train(config):
                         # CALCULATE ACTOR LOSS
                         logratio_is = (
                             log_prob
-                            + log_prob_k1_joint
-                            - log_prob_k1
-                            - log_prob_k0_joint
+                            - log_prob_k0
+                            + (1 / (env.num_agents - 1))
+                            * (
+                                log_prob_k1_joint
+                                - log_prob_k1
+                                - log_prob_k0_joint
+                                + log_prob_k0
+                            )
                         )
+                        # logratio_is = (
+                        #     log_prob
+                        #     + log_prob_k1_joint
+                        #     - log_prob_k1
+                        #     - log_prob_k0_joint
+                        # )
                         ratio_is = jnp.exp(logratio_is)
                         gae = (gae - gae.mean()) / (gae.std() + 1e-8)
                         loss_actor1 = ratio_is * gae
@@ -850,6 +863,7 @@ def make_train(config):
                         actor_hidden_state_init,
                         traj_batch,
                         advantages,
+                        log_prob_k0,
                         log_prob_k0_joint,
                         log_prob_k1,
                         log_prob_k1_joint,
@@ -915,6 +929,7 @@ def make_train(config):
                     actor_hidden_state_init,
                     traj_batch,
                     advantages.squeeze(),
+                    log_prob_k0,
                     log_prob_k0_joint,
                     log_prob_k1,
                     log_prob_k1_joint,
