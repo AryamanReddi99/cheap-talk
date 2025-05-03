@@ -1300,8 +1300,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"K2MAPPO_K1CR_SCALED_LOSS_{config['MAP_NAME']}"
-        group = f"K2MAPPO_K1CR_SCALED_LOSS_{config['MAP_NAME']}"
+        job_type = f"K2MAPPO_ABL_LIGHT_{config['MAP_NAME']}"
+        group = f"K2MAPPO_ABL_LIGHT_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
