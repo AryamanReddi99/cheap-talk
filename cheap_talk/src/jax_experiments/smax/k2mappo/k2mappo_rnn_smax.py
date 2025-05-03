@@ -1217,9 +1217,6 @@ def make_train(config):
             )
             train_runner_state_k, loss_info_k = _update_step_k2(train_runner_state_k)
 
-            # Give critic its K1 state back
-            critic_train_state = critic_train_state.replace(params=critic_params_k1)
-
             actor_train_state = actor_train_state.replace(
                 params=train_runner_state_k.actor_train_state.params,
                 opt_state=train_runner_state_k.actor_train_state.opt_state,

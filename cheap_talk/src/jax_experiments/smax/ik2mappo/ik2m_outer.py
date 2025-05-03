@@ -737,7 +737,7 @@ def make_train(config):
                 )
                 return update_state, loss_info
 
-            initial_update_state = UpdateRunnerState(
+            initial_update_state_k1 = UpdateRunnerState(
                 actor_train_state=actor_train_state,
                 critic_train_state=critic_train_state,
                 traj_batch=traj_batch,
@@ -747,18 +747,31 @@ def make_train(config):
                 critic_hidden_state=critic_hidden_state_init,
                 rng=rng,
             )
-            final_update_state, loss_info = jax.lax.scan(
+            final_update_state_k1, loss_info = jax.lax.scan(
                 _update_epoch_k1,
-                initial_update_state,
+                initial_update_state_k1,
                 None,
                 config["UPDATE_EPOCHS"],
             )
 
-            actor_train_state = final_update_state.actor_train_state
-            critic_train_state = final_update_state.critic_train_state
+            actor_train_state = final_update_state_k1.actor_train_state
+            critic_train_state = final_update_state_k1.critic_train_state
 
             actor_params_k1 = actor_train_state.params
-            critic_params_k1 = critic_train_state.params
+            actor_train_state = actor_train_state.replace(
+                params=actor_params_k0, opt_state=actor_optimizer_k0
+            )
+
+            initial_update_state_k2 = UpdateRunnerState(
+                actor_train_state=actor_train_state,
+                critic_train_state=critic_train_state,
+                traj_batch=traj_batch,
+                advantages=advantages,
+                targets=None,
+                actor_hidden_state=actor_hidden_state_init,
+                critic_hidden_state=critic_hidden_state_init,
+                rng=rng,
+            )
 
             def _update_epoch_k2(update_state, unused):
                 def _update_minibatch_k2(train_states, minibatch):
@@ -938,31 +951,20 @@ def make_train(config):
                 )
                 return update_state, loss_info
 
-            # final_update_state_k, loss_info_k = jax.lax.scan(
-            #     _update_epoch_k2,
-            #     final_update_state,
-            #     None,
-            #     config["UPDATE_EPOCHS"],
-            # )
+            final_update_state_k2, loss_info_k = jax.lax.scan(
+                _update_epoch_k2,
+                initial_update_state_k2,
+                None,
+                config["UPDATE_EPOCHS"],
+            )
 
             loss_info["ratio_0"] = loss_info["ratio"].at[0, 0].get()
-            # loss_info_k["ratio_0_k"] = loss_info_k["ratio_k"].at[0, 0].get()
+            loss_info_k["ratio_0_k"] = loss_info_k["ratio_k"].at[0, 0].get()
             loss_info = jax.tree.map(lambda x: x.mean(), loss_info)
-            # loss_info_k = jax.tree.map(lambda x: x.mean(), loss_info_k)
+            loss_info_k = jax.tree.map(lambda x: x.mean(), loss_info_k)
 
-            # DEBUG
-            # actor_train_state = final_update_state_k.actor_train_state
-            # actor_train_state = actor_train_state.replace(params=actor_params_k1)
-
-            critic_train_state = critic_train_state.replace(params=critic_params_k1)
-            # rng = final_update_state_k.rng
-            rng = final_update_state.rng
-
-            train_runner_state = train_runner_state.replace(
-                actor_train_state=actor_train_state,
-                critic_train_state=critic_train_state,
-                rng=rng,
-            )
+            actor_train_state = final_update_state_k2.actor_train_state
+            rng = final_update_state_k2.rng
 
             # Wandb metrics
             metric = traj_batch.info
@@ -973,7 +975,7 @@ def make_train(config):
                 traj_batch.info,
             )
             metric["loss"] = loss_info
-            # metric["loss_k"] = loss_info_k
+            metric["loss_k"] = loss_info_k
             metric["update_step"] = update_step
 
             def callback(exp_id, metric):
@@ -988,7 +990,7 @@ def make_train(config):
                     * config["NUM_ENVS"]
                     * config["NUM_STEPS"],
                     **metric["loss"],
-                    #                     **metric["loss_k"],
+                    **metric["loss_k"],
                 }
 
                 np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
@@ -1036,8 +1038,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK2MAPPO_ABLATION_{config['MAP_NAME']}"
-        group = f"iK2MAPPO_ABLATION_{config['MAP_NAME']}"
+        job_type = f"iK2MAPPO_{config['MAP_NAME']}"
+        group = f"iK2MAPPO_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
