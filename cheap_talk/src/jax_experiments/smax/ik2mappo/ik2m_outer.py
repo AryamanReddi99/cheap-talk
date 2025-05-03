@@ -988,7 +988,7 @@ def make_train(config):
                     * config["NUM_ENVS"]
                     * config["NUM_STEPS"],
                     **metric["loss"],
-                    **metric["loss_k"],
+                    #                     **metric["loss_k"],
                 }
 
                 np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
