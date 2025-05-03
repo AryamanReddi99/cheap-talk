@@ -1280,6 +1280,7 @@ def make_train(config):
             done=jnp.zeros((config["NUM_ACTORS"]), dtype=bool),
             actor_hidden_state=actor_hidden_state_init,
             critic_hidden_state=critic_hidden_state_init,
+            actor_hidden_state_k=actor_hidden_state_init,
             update_step=0,
             rng=_train_rng,
         )
