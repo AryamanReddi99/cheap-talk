@@ -2,6 +2,8 @@
 "NUM_ENVS": 2 # Small
 "NUM_STEPS": 5 # small
 "LR": 0.004
+"ACTOR_OPTIMIZER": "adam" # adam, rmsprop
+"CRITIC_OPTIMIZER": "adam" # adam, rmsprop
 "ANNEAL_LR": True
 "UPDATE_EPOCHS": 2
 "NUM_MINIBATCHES": 2
@@ -13,6 +15,7 @@
 "MAX_GRAD_NORM": 0.5
 "SCALE_ACTOR_GRAD": True
 "SCALE_CRITIC_GRAD": True
+"K0_CRITIC_FOR_K2_UPDATE": False
 "ACTIVATION": "relu"
 "OBS_WITH_AGENT_ID": True
 "GRU_HIDDEN_DIM": 128

@@ -2,7 +2,6 @@
 Based on PureJaxRL Implementation of IPPO, with changes to give a centralised critic.
 """
 
-import flax.serialization
 import jax
 import datetime
 import jax.numpy as jnp
@@ -23,7 +22,6 @@ from functools import partial
 
 from jaxmarl.wrappers.baselines import SMAXLogWrapper, JaxMARLWrapper, SMAXLogEnvState
 from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
-import flax
 from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
 from cheap_talk.src.jax_experiments.utils.jax_utils import pytree_norm
 
@@ -227,15 +225,12 @@ class Transition(NamedTuple):
 class TrainRunnerState:
     actor_train_state: TrainState
     critic_train_state: TrainState
-    actor_train_state_k: TrainState
-    critic_train_state_k: TrainState
     env_state: SMAXLogEnvState
     obs: dict
     done: jnp.array
     actor_hidden_state: jnp.array
     critic_hidden_state: jnp.array
     actor_hidden_state_k: jnp.array
-    critic_hidden_state_k: jnp.array
     update_step: int
     rng: Array
 
@@ -339,16 +334,8 @@ def make_train(config):
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
                     optax.adam(learning_rate=lr_schedule, eps=1e-5),
                 )
-                actor_tx_k = optax.chain(
-                    optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(learning_rate=lr_schedule, eps=1e-5),
-                )
             elif config["ACTOR_OPTIMIZER"] == "rmsprop":
                 actor_tx = optax.chain(
-                    optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.rmsprop(learning_rate=lr_schedule, eps=1e-5),
-                )
-                actor_tx_k = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
                     optax.rmsprop(learning_rate=lr_schedule, eps=1e-5),
                 )
@@ -357,16 +344,8 @@ def make_train(config):
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
                     optax.adam(learning_rate=lr_schedule, eps=1e-5),
                 )
-                critic_tx_k = optax.chain(
-                    optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.adam(learning_rate=lr_schedule, eps=1e-5),
-                )
             elif config["CRITIC_OPTIMIZER"] == "rmsprop":
                 critic_tx = optax.chain(
-                    optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                    optax.rmsprop(learning_rate=lr_schedule, eps=1e-5),
-                )
-                critic_tx_k = optax.chain(
                     optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
                     optax.rmsprop(learning_rate=lr_schedule, eps=1e-5),
                 )
@@ -381,29 +360,6 @@ def make_train(config):
                 apply_fn=critic_network.apply,
                 params=critic_network_params,
                 tx=critic_tx,
-            )
-
-            # K1 networks
-            actor_network_k = ActorRNN(env.action_space(env.agents[0]).n, config=config)
-            critic_network_k = CriticRNN(config=config)
-            rng, _rng_actor_k, _rng_critic_k = jax.random.split(rng, 3)
-            actor_network_params_k = actor_network_k.init(
-                _rng_actor_k, actor_hidden_state_init, ac_init_x
-            )
-            critic_network_params_k = critic_network.init(
-                _rng_critic_k, critic_hidden_state_init, cr_init_x
-            )
-
-            # Train states
-            actor_train_state_k = TrainState.create(
-                apply_fn=actor_network_k.apply,
-                params=actor_network_params_k,
-                tx=actor_tx_k,
-            )
-            critic_train_state_k = TrainState.create(
-                apply_fn=critic_network_k.apply,
-                params=critic_network_params_k,
-                tx=critic_tx_k,
             )
 
             # Initialise envs, hstates
@@ -421,10 +377,6 @@ def make_train(config):
                 critic_train_state,
                 actor_network,
                 critic_network,
-                actor_train_state_k,
-                critic_train_state_k,
-                actor_network_k,
-                critic_network_k,
                 obs,
                 env_state,
                 actor_hidden_state_init,
@@ -437,10 +389,6 @@ def make_train(config):
             critic_train_state,
             actor_network,
             critic_network,
-            actor_train_state_k,
-            critic_train_state_k,
-            actor_network_k,
-            critic_network_k,
             obs,
             env_state,
             actor_hidden_state_init,
@@ -453,8 +401,6 @@ def make_train(config):
             actor_params_k0 = train_runner_state.actor_train_state.params
             critic_params_k0 = train_runner_state.critic_train_state.params
             actor_optimizer_k0 = train_runner_state.actor_train_state.opt_state
-            actor_train_state_k = train_runner_state.actor_train_state_k
-            critic_train_state_k = train_runner_state.critic_train_state_k
             env_state_initial = train_runner_state.env_state
             obs_initial = train_runner_state.obs
             done_initial = train_runner_state.done
@@ -842,23 +788,11 @@ def make_train(config):
             critic_train_state = train_runner_state.critic_train_state
             rng = train_runner_state.rng
 
-            # Set k networks to k1 state
-            actor_train_state_k = actor_train_state_k.replace(
-                params=actor_train_state.params
-            )
-            critic_train_state_k = critic_train_state_k.replace(
-                params=critic_train_state.params
-            )
+            actor_params_k1 = actor_train_state.params
+            critic_params_k1 = critic_train_state.params
 
-            # reset actor & critic to k0
             actor_train_state = actor_train_state.replace(
                 params=actor_params_k0, opt_state=actor_optimizer_k0
-            )
-            critic_params_k1 = critic_train_state.params
-            critic_train_state = jax.lax.cond(
-                config["K0_CRITIC_FOR_K2_UPDATE"],
-                lambda: critic_train_state.replace(params=critic_params_k0),
-                lambda: critic_train_state,
             )
 
             def _update_step_k2(train_runner_state_k):
@@ -871,7 +805,6 @@ def make_train(config):
                         # runner_state is a single object that gets passed by the scan back to _env_step at each loop
                         actor_train_state = runner_state_k.actor_train_state
                         critic_train_state = runner_state_k.critic_train_state
-                        actor_train_state_k = runner_state_k.actor_train_state_k
                         env_state = runner_state_k.env_state
                         last_obs = runner_state_k.obs
                         last_done = runner_state_k.done  # done is always batched
@@ -906,8 +839,8 @@ def make_train(config):
                         log_prob = pi.log_prob(action)
 
                         # k1 actions
-                        actor_hidden_state_k_new, pi_k = actor_network_k.apply(
-                            actor_train_state_k.params, actor_hidden_state_k, ac_in
+                        actor_hidden_state_k_new, pi_k = actor_network.apply(
+                            actor_params_k1, actor_hidden_state_k, ac_in
                         )
                         action_k = jax.lax.stop_gradient(pi_k.sample(seed=_rng_k))
                         action_k_reshaped = action_k.reshape(
@@ -931,8 +864,14 @@ def make_train(config):
                             world_state[None, :],
                             last_done[None, :],
                         )
-                        critic_hidden_state_new, value = critic_network.apply(
-                            critic_train_state.params, critic_hidden_state, cr_in
+                        critic_hidden_state_new, value = jax.lax.cond(
+                            config["K0_CRITIC_FOR_K2_UPDATE"],
+                            lambda: critic_network.apply(
+                                critic_params_k0, critic_hidden_state, cr_in
+                            ),
+                            lambda: critic_network.apply(
+                                critic_params_k1, critic_hidden_state, cr_in
+                            ),
                         )
 
                         # STEP ENV
@@ -994,8 +933,14 @@ def make_train(config):
                         last_world_state[None, :],
                         last_done[None, :],
                     )
-                    _, last_val_k = critic_network.apply(
-                        critic_train_state.params, critic_hidden_state, cr_in
+                    _, last_val_k = jax.lax.cond(
+                        config["K0_CRITIC_FOR_K2_UPDATE"],
+                        lambda: critic_network.apply(
+                            critic_params_k0, critic_hidden_state, cr_in
+                        ),
+                        lambda: critic_network.apply(
+                            critic_params_k1, critic_hidden_state, cr_in
+                        ),
                     )
                     last_val_k = last_val_k.squeeze()
 
@@ -1261,15 +1206,12 @@ def make_train(config):
             train_runner_state_k = TrainRunnerState(
                 actor_train_state=actor_train_state,
                 critic_train_state=critic_train_state,
-                actor_train_state_k=actor_train_state_k,
-                critic_train_state_k=critic_train_state_k,
                 env_state=env_state_initial,
                 obs=obs_initial,
                 done=done_initial,
                 actor_hidden_state=actor_hidden_state_init,
                 critic_hidden_state=critic_hidden_state_init,
                 actor_hidden_state_k=actor_hidden_state_init,
-                critic_hidden_state_k=critic_hidden_state_init,
                 update_step=update_step,
                 rng=_train_rng_k,
             )
@@ -1330,15 +1272,12 @@ def make_train(config):
         initial_runner_state = TrainRunnerState(
             actor_train_state=actor_train_state,
             critic_train_state=critic_train_state,
-            actor_train_state_k=actor_train_state_k,
-            critic_train_state_k=critic_train_state_k,
             env_state=env_state,
             obs=obs,
             done=jnp.zeros((config["NUM_ACTORS"]), dtype=bool),
             actor_hidden_state=actor_hidden_state_init,
             critic_hidden_state=critic_hidden_state_init,
             actor_hidden_state_k=actor_hidden_state_init,
-            critic_hidden_state_k=critic_hidden_state_init,
             update_step=0,
             rng=_train_rng,
         )
