@@ -449,6 +449,18 @@ def make_train(config):
         ) = train_setup(_rng_setup)
 
         def _train_loop(train_runner_state, unused):
+
+            # save initial settings for k
+            actor_params_k0 = train_runner_state.actor_train_state.params
+            critic_params_k0 = train_runner_state.critic_train_state.params
+            actor_optimizer_k0 = train_runner_state.actor_train_state.opt_state
+            actor_train_state_k = train_runner_state.actor_train_state_k
+            critic_train_state_k = train_runner_state.critic_train_state_k
+            env_state_initial = train_runner_state.env_state
+            obs_initial = train_runner_state.obs
+            done_initial = train_runner_state.done
+            actor_hidden_state_init = train_runner_state.actor_hidden_state
+            critic_hidden_state_init = train_runner_state.critic_hidden_state
             update_step = train_runner_state.update_step
 
             def _update_step(train_runner_state, unused):
@@ -673,20 +685,6 @@ def make_train(config):
                                 clip_frac,
                             )
 
-                        actor_grad_fn = jax.value_and_grad(_actor_loss_fn, has_aux=True)
-                        actor_loss, actor_grads = actor_grad_fn(
-                            actor_train_state.params,
-                            actor_hidden_state_init,
-                            traj_batch,
-                            advantages,
-                        )
-                        actor_grad_norm = pytree_norm(actor_grads)
-
-                        actor_train_state = actor_train_state.apply_gradients(
-                            grads=actor_grads
-                        )
-
-                        # Critic
                         def _critic_loss_fn(
                             critic_params, critic_hidden_state_init, traj_batch, targets
                         ):
@@ -712,6 +710,15 @@ def make_train(config):
                             critic_loss = config["VF_COEF"] * value_loss
                             return critic_loss, (value_loss)
 
+                        actor_grad_fn = jax.value_and_grad(_actor_loss_fn, has_aux=True)
+                        actor_loss, actor_grads = actor_grad_fn(
+                            actor_train_state.params,
+                            actor_hidden_state_init,
+                            traj_batch,
+                            advantages,
+                        )
+                        actor_grad_norm = pytree_norm(actor_grads)
+
                         critic_grad_fn = jax.value_and_grad(
                             _critic_loss_fn, has_aux=True
                         )
@@ -722,6 +729,10 @@ def make_train(config):
                             targets,
                         )
                         critic_grad_norm = pytree_norm(critic_grads)
+
+                        actor_train_state = actor_train_state.apply_gradients(
+                            grads=actor_grads
+                        )
                         critic_train_state = critic_train_state.apply_gradients(
                             grads=critic_grads
                         )
@@ -807,10 +818,6 @@ def make_train(config):
                     critic_hidden_state=critic_hidden_state_init,
                     rng=rng,
                 )
-
-                # Store K0 params
-                actor_params_k0 = actor_train_state.params
-                critic_params_k0 = critic_train_state.params
                 final_update_state, loss_info = jax.lax.scan(
                     _update_epoch_k1,
                     initial_update_state,
@@ -820,13 +827,13 @@ def make_train(config):
                 actor_params_k1 = final_update_state.actor_train_state.params
                 critic_params_k1 = final_update_state.critic_train_state.params
 
-                # Reset networks to K0
-                actor_train_state = actor_train_state.replace(params=actor_params_k0)
-                critic_train_state = critic_train_state.replace(params=critic_params_k0)
-                final_update_state = final_update_state.replace(
-                    actor_train_state=actor_train_state,
-                    critic_train_state=critic_train_state,
-                )
+                # # Reset networks to K0
+                # actor_train_state = actor_train_state.replace(params=actor_params_k0)
+                # critic_train_state = critic_train_state.replace(params=critic_params_k0)
+                # final_update_state = final_update_state.replace(
+                #     actor_train_state=actor_train_state,
+                #     critic_train_state=critic_train_state,
+                # )
 
                 def _update_epoch_k2(update_state, unused):
                     def _update_minibatch_k2(train_states, minibatch):
