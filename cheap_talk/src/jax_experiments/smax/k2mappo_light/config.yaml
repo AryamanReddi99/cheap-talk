@@ -13,6 +13,8 @@
 "ENT_COEF": 0.0
 "VF_COEF": 0.5
 "MAX_GRAD_NORM": 0.5
+"SCALE_ACTOR_GRAD": True
+"SCALE_CRITIC_GRAD": True
 "K0_CRITIC_FOR_K2_UPDATE": False
 "ACTIVATION": "relu"
 "OBS_WITH_AGENT_ID": True
@@ -21,8 +23,8 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "3s_vs_5z"
-"SEED": 1
+"MAP_NAME": "2s3z"
+"SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 
   "see_enemy_actions": True
