@@ -1075,14 +1075,16 @@ def make_train(config):
     return train
 
 
-@hydra.main(version_base=None, config_path="./", config_name="config_ik2m_inner")
+@hydra.main(
+    version_base=None, config_path="./", config_name="config_ik2m_inner_separate"
+)
 def main(config):
     try:
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK2M_IN_NORM_{config['MAP_NAME']}"
-        group = f"iK2M_IN_NORM_{config['MAP_NAME']}"
+        job_type = f"iK2M_IN_SEP_{config['MAP_NAME']}"
+        group = f"iK2M_IN_SEP_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
