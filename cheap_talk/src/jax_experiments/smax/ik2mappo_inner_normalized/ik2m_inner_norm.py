@@ -823,11 +823,22 @@ def make_train(config):
                         log_prob = pi.log_prob(action)
 
                         # CALCULATE ACTOR LOSS
-                        logratio_is = (
-                            log_prob
-                            + log_prob_k1_joint
-                            - log_prob_k0_joint
+                        logratio = log_prob - log_prob_k0
+                        logratio_other_agents = (  # default
+                            log_prob_k1_joint
+                            + log_prob_k0
                             - log_prob_k1
+                            - log_prob_k0_joint
+                        )
+                        # logratio_is = (
+                        #     log_prob
+                        #     + log_prob_k1_joint
+                        #     - log_prob_k0_joint
+                        #     - log_prob_k1
+                        # )
+                        logratio_is = (
+                            logratio
+                            + (1 / (env.num_agents - 1)) * logratio_other_agents
                         )
 
                         ratio_is = jnp.exp(logratio_is)
