@@ -824,7 +824,15 @@ def make_train(config):
 
                         # CALCULATE ACTOR LOSS
                         logratio = log_prob - log_prob_k0
+                        # logratio_other_agents = ( # default
+                        #     log_prob_k1_joint
+                        #     + log_prob_k0
+                        #     - log_prob_k1
+                        #     - log_prob_k0_joint
+                        # )
                         logratio_other_agents = (
+                            1 / (env.num_agents - 1)
+                        ) * (  # normalized
                             log_prob_k1_joint
                             + log_prob_k0
                             - log_prob_k1
@@ -1083,8 +1091,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK2M_IN_SEP_{config['MAP_NAME']}"
-        group = f"iK2M_IN_SEP_{config['MAP_NAME']}"
+        job_type = f"iK2M_IN_SEP_NORM_{config['MAP_NAME']}"
+        group = f"iK2M_IN_SEP_NORM_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
