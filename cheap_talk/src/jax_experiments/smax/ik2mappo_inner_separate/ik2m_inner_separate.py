@@ -743,8 +743,6 @@ def make_train(config):
                     )
 
                     # get k1 probs
-
-                    # DEBUG
                     actor_params_k1 = actor_train_state.params
                     _, pi_k1 = actor_network.apply(
                         actor_params_k1,
@@ -825,40 +823,43 @@ def make_train(config):
                         log_prob = pi.log_prob(action)
 
                         # CALCULATE ACTOR LOSS
-                        logratio_is = (
-                            log_prob
-                            + log_prob_k1_joint
-                            - log_prob_k0_joint
+                        logratio = log_prob - log_prob_k0
+                        logratio_other_agents = (
+                            log_prob_k1_joint
+                            + log_prob_k0
                             - log_prob_k1
+                            - log_prob_k0_joint
                         )
-
-                        ratio_is = jnp.exp(logratio_is)
+                        ratio_other_agents = jnp.exp(logratio_other_agents)
+                        ratio = jnp.exp(logratio)
                         gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                        loss_actor1 = ratio_is * gae
+                        loss_actor1 = ratio * gae * ratio_other_agents
                         loss_actor2 = (
                             jnp.clip(
-                                ratio_is,
+                                ratio,
                                 1.0 - config["CLIP_EPS"],
                                 1.0 + config["CLIP_EPS"],
                             )
                             * gae
+                            * ratio_other_agents
                         )
                         loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
                         loss_actor = loss_actor.mean()
                         entropy = pi.entropy().mean()
 
                         # debug
-                        approx_kl = ((ratio_is - 1) - logratio_is).mean()
-                        clip_frac = jnp.mean(jnp.abs(ratio_is - 1) > config["CLIP_EPS"])
+                        approx_kl = ((ratio - 1) - ratio).mean()
+                        clip_frac = jnp.mean(jnp.abs(ratio - 1) > config["CLIP_EPS"])
 
                         actor_loss = loss_actor - config["ENT_COEF"] * entropy
 
                         return actor_loss, (
                             loss_actor,
                             entropy,
-                            ratio_is,
+                            ratio,
                             approx_kl,
                             clip_frac,
+                            ratio_other_agents,
                         )
 
                     actor_grad_fn_k2 = jax.value_and_grad(
@@ -901,6 +902,7 @@ def make_train(config):
                         "ratio_k": actor_loss_k2[1][2],
                         "approx_kl_k": actor_loss_k2[1][3],
                         "clip_frac_k": actor_loss_k2[1][4],
+                        "ratio_other_agents": actor_loss_k2[1][5],
                         "actor_grad_norm_k": actor_grad_norm_k2,
                     }
 
@@ -1079,8 +1081,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK2M_IN_{config['MAP_NAME']}"
-        group = f"iK2M_IN_{config['MAP_NAME']}"
+        job_type = f"iK2M_IN_NORM_{config['MAP_NAME']}"
+        group = f"iK2M_IN_NORM_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER

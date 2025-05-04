@@ -743,8 +743,6 @@ def make_train(config):
                     )
 
                     # get k1 probs
-
-                    # DEBUG
                     actor_params_k1 = actor_train_state.params
                     _, pi_k1 = actor_network.apply(
                         actor_params_k1,
@@ -1079,8 +1077,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK2M_IN_{config['MAP_NAME']}"
-        group = f"iK2M_IN_{config['MAP_NAME']}"
+        job_type = f"iK2M_IN_NORM_{config['MAP_NAME']}"
+        group = f"iK2M_IN_NORM_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
