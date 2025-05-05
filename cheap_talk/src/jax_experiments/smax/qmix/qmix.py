@@ -575,7 +575,8 @@ def make_train(config, env):
                 metrics.update({"test_" + k: v for k, v in test_state.items()})
 
             def callback(exp_id, metrics):
-                LOGGER.log(int(exp_id), metrics)
+                np_log_dict = {k: np.array(v) for k, v in metrics.items()}
+                LOGGER.log(int(exp_id), np_log_dict)
 
             jax.experimental.io_callback(callback, None, exp_id, metrics)
 

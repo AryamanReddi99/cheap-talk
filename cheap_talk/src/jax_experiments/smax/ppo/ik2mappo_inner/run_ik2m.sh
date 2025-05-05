@@ -10,4 +10,6 @@
 #SBATCH -o ./logs_sbatch/%A_%a.out
 #SBATCH -e ./logs_sbatch/%A_%a.err ## Make sure to create the logs directory
 
-python ik2m_inner.py
+SEED=${1:-0}
+echo "Running with SEED=${SEED}"
+python ik2m_inner.py SEED=$SEED
