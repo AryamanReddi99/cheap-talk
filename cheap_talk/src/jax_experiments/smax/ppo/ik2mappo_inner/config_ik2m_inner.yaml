@@ -18,8 +18,9 @@
 "OBS_WITH_AGENT_ID": True
 "GRU_HIDDEN_DIM": 128
 "FC_DIM_SIZE": 128
-
 "SCALE_CLIP_EPS": False
+
+# ENV
 "ENV_NAME": "HeuristicEnemySMAX"
 "MAP_NAME": "3s_vs_5z"
 "SEED": 0
@@ -32,4 +33,4 @@
 # WandB Params
 "PROJECT": "smax"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "online" # online, disabled
+"WANDB_MODE" : "disabled" # online, disabled

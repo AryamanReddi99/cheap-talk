@@ -571,6 +571,7 @@ def make_train(config):
 
                 # shape (num_actors)
                 advantages, targets = _calculate_gae(traj_batch, last_val)
+                # jax.debug.print("advantages: {}", advantages[:5][0])
 
                 # multiple update epochs
                 def _update_epoch(update_state, unused):
@@ -615,6 +616,13 @@ def make_train(config):
                             loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
                             loss_actor = loss_actor.mean()
                             entropy = pi.entropy().mean()
+
+                            # jax.debug.print("ratio: {}", ratio[:5][0])
+                            # jax.debug.print("gae: {}", gae[:5][0])
+                            # jax.debug.print("log_prob: {}", log_prob[:5][0])
+                            # jax.debug.print(
+                            #     "traj_batch.log_prob: {}", traj_batch.log_prob[:5][0]
+                            # )
 
                             # debug
                             approx_kl = ((ratio - 1) - logratio).mean()
@@ -780,6 +788,7 @@ def make_train(config):
                     critic_train_state=critic_train_state,
                     rng=rng,
                 )
+
                 return train_runner_state, traj_batch, loss_info
 
             train_runner_state, traj_batch, loss_info = _update_step_k1(
@@ -1267,6 +1276,9 @@ def make_train(config):
                 update_step=update_step,
                 rng=rng,
             )
+
+            jax.debug.print("{}", loss_info["actor_loss"])
+
             return train_runner_state, metric
 
         rng, _train_rng = jax.random.split(rng)
@@ -1286,7 +1298,7 @@ def make_train(config):
 
         # highest level runner state has 6 elements
         final_runner_state, metrics_batch = jax.lax.scan(
-            _train_loop, initial_runner_state, None, 1
+            _train_loop, initial_runner_state, None, 2
         )
         return {"runner_state": final_runner_state}
 
@@ -1321,6 +1333,9 @@ def main(config):
         print("Starting compile...")
         train_jit = jax.jit(make_train(config))
         out = jax.vmap(train_jit)(rng_seeds, exp_ids)
+
+        # train_vjit = jax.jit(jax.vmap(make_train(config)))
+        # outs = jax.block_until_ready(train_vjit(rng_seeds, exp_ids))
     finally:
         LOGGER.finish()
         print("Finished training.")

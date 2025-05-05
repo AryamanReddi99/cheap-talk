@@ -1079,8 +1079,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK2M_IN_{config['MAP_NAME']}"
-        group = f"iK2M_IN_{config['MAP_NAME']}"
+        job_type = f"iK2M_IN_ABLATE_{config['MAP_NAME']}"
+        group = f"iK2M_IN_ABLATE_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
@@ -1099,8 +1099,9 @@ def main(config):
         exp_ids = jnp.arange(config["NUM_SEEDS"])
 
         print("Starting compile...")
-        train_jit = jax.jit(make_train(config))
-        out = jax.vmap(train_jit)(rng_seeds, exp_ids)
+        train_vmap = jax.vmap(make_train(config))
+        train_vjit = jax.jit(train_vmap)
+        out = jax.block_until_ready(train_vjit(rng_seeds, exp_ids))
     finally:
         LOGGER.finish()
         print("Finished training.")
