@@ -13,10 +13,10 @@ from flax.training.train_state import TrainState
 import distrax
 import hydra
 from omegaconf import DictConfig, OmegaConf
-
+import datetime
 from jaxmarl.wrappers.baselines import SMAXLogWrapper
 from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
-
+from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
 import wandb
 import functools
 
@@ -141,7 +141,7 @@ def make_train(config):
         )
         return config["LR"] * frac
 
-    def train(rng):
+    def train(rng, exp_id):
         # INIT NETWORK
         network = ActorCriticRNN(env.action_space(env.agents[0]).n, config=config)
         rng, _rng = jax.random.split(rng)
@@ -425,26 +425,26 @@ def make_train(config):
 
             rng = update_state[-1]
 
-            def callback(metric):
-                wandb.log(
-                    {
-                        # the metrics have an agent dimension, but this is identical
-                        # for all agents so index into the 0th item of that dimension.
-                        "returns": metric["returned_episode_returns"][:, :, 0][
-                            metric["returned_episode"][:, :, 0]
-                        ].mean(),
-                        "win_rate": metric["returned_won_episode"][:, :, 0][
-                            metric["returned_episode"][:, :, 0]
-                        ].mean(),
-                        "env_step": metric["update_steps"]
-                        * config["NUM_ENVS"]
-                        * config["NUM_STEPS"],
-                        **metric["loss"],
-                    }
-                )
+            def callback(exp_id, metric):
+                log_dict = {
+                    # the metrics have an agent dimension, but this is identical
+                    # for all agents so index into the 0th item of that dimension.
+                    "returns": metric["returned_episode_returns"][:, :, 0][
+                        metric["returned_episode"][:, :, 0]
+                    ].mean(),
+                    "win_rate": metric["returned_won_episode"][:, :, 0][
+                        metric["returned_episode"][:, :, 0]
+                    ].mean(),
+                    "env_step": metric["update_steps"]
+                    * config["NUM_ENVS"]
+                    * config["NUM_STEPS"],
+                    **metric["loss"],
+                }
+                np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
+                LOGGER.log(int(exp_id), np_log_dict)
 
             metric["update_steps"] = update_steps
-            jax.experimental.io_callback(callback, None, metric)
+            jax.experimental.io_callback(callback, None, exp_id, metric)
             update_steps = update_steps + 1
             runner_state = (train_state, env_state, last_obs, last_done, hstate, rng)
             return (runner_state, update_steps), metric
@@ -468,17 +468,36 @@ def make_train(config):
 
 @hydra.main(version_base=None, config_path="./", config_name="config")
 def main(config):
-    config = OmegaConf.to_container(config)
-    wandb.init(
-        entity=config["ENTITY"],
-        project=config["PROJECT"],
-        tags=["IPPO", "RNN"],
-        config=config,
-        mode=config["WANDB_MODE"],
-    )
-    rng = jax.random.PRNGKey(config["SEED"])
-    train_jit = jax.jit(make_train(config), device=jax.devices()[0])
-    out = train_jit(rng)
+    try:
+        config = OmegaConf.to_container(config)
+
+        # WANDB
+        job_type = f"iK2M_IN_ABLATE_{config['MAP_NAME']}"
+        group = f"iK2M_IN_ABLATE_{config['MAP_NAME']}"
+        if config["USE_TIMESTAMP"]:
+            group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
+        global LOGGER
+        LOGGER = WandbMultiLogger(
+            project=config["PROJECT"],
+            group=group,
+            job_type=job_type,
+            config=config,
+            mode=config["WANDB_MODE"],
+            seed=config["SEED"],
+            num_seeds=config["NUM_SEEDS"],
+        )
+
+        rng = jax.random.PRNGKey(config["SEED"])
+        rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
+        exp_ids = jnp.arange(config["NUM_SEEDS"])
+
+        print("Starting compile...")
+        train_vmap = jax.vmap(make_train(config))
+        train_vjit = jax.jit(train_vmap)
+        out = jax.block_until_ready(train_vjit(rng_seeds, exp_ids))
+    finally:
+        LOGGER.finish()
+        print("Finished training.")
 
 
 if __name__ == "__main__":

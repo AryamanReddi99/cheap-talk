@@ -19,12 +19,13 @@
 "ENV_NAME": "HeuristicEnemySMAX"
 "MAP_NAME": "2s3z"
 "SEED": 0
+"NUM_SEEDS": 5
 "ENV_KWARGS": 
   "see_enemy_actions": True
   "walls_cause_death": True
   "attack_mode": "closest"
 
 # WandB Params
-"ENTITY": ""
 "PROJECT": "smax"
-"WANDB_MODE" : "online"
+"USE_TIMESTAMP": True
+"WANDB_MODE" : "disabled" # online, disabled
