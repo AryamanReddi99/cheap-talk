@@ -22,7 +22,7 @@
 
 # ENV
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "3s_vs_5z"
+"MAP_NAME": "smacv2_5_units"
 "SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 
@@ -33,4 +33,4 @@
 # WandB Params
 "PROJECT": "smax"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "disabled" # online, disabled
+"WANDB_MODE" : "online" # online, disabled

@@ -8,74 +8,57 @@ import flax.linen as nn
 from flax import struct
 import numpy as np
 import optax
-import datetime
 from flax.linen.initializers import constant, orthogonal
 from typing import Sequence, NamedTuple, Any, Tuple, Union, Dict
-import wandb
-import functools
+import datetime
 from flax.training.train_state import TrainState
 import distrax
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from functools import partial
-
-from jaxmarl.wrappers.baselines import SMAXLogWrapper, JaxMARLWrapper
-from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
+import jaxmarl
+from jaxmarl.wrappers.baselines import MPELogWrapper, JaxMARLWrapper
+from jaxmarl.environments.multi_agent_env import MultiAgentEnv, State
 from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
-from cheap_talk.src.jax_experiments.utils.jax_utils import pytree_norm
+
+import wandb
+import functools
+import matplotlib.pyplot as plt
 
 
-class SMAXWorldStateWrapper(JaxMARLWrapper):
-    """
-    Provides a `"world_state"` observation for the centralised critic.
-    world state observation of dimension: (num_agents, world_state_size)
-    """
-
-    def __init__(
-        self,
-        env: HeuristicEnemySMAX,
-        obs_with_agent_id=True,
-    ):
-        super().__init__(env)
-        self.obs_with_agent_id = obs_with_agent_id
-
-        if not self.obs_with_agent_id:
-            self._world_state_size = self._env.state_size
-            self.world_state_fn = self.ws_just_env_state
-        else:
-            self._world_state_size = self._env.state_size + self._env.num_allies
-            self.world_state_fn = self.ws_with_agent_id
+class MPEWorldStateWrapper(JaxMARLWrapper):
 
     @partial(jax.jit, static_argnums=0)
     def reset(self, key):
         obs, env_state = self._env.reset(key)
-        obs["world_state"] = self.world_state_fn(obs, env_state)
+        obs["world_state"] = self.world_state(obs)
         return obs, env_state
 
     @partial(jax.jit, static_argnums=0)
     def step(self, key, state, action):
         obs, env_state, reward, done, info = self._env.step(key, state, action)
-        obs["world_state"] = self.world_state_fn(obs, state)
+        obs["world_state"] = self.world_state(obs)
         return obs, env_state, reward, done, info
 
     @partial(jax.jit, static_argnums=0)
-    def ws_just_env_state(self, obs, state):
-        # return all_obs
-        world_state = obs["world_state"]
-        world_state = world_state[None].repeat(self._env.num_allies, axis=0)
-        return world_state
+    def world_state(self, obs):
+        """
+        For each agent: [agent obs, all other agent obs]
+        """
 
-    @partial(jax.jit, static_argnums=0)
-    def ws_with_agent_id(self, obs, state):
-        # all_obs = jnp.array([obs[agent] for agent in self._env.agents])
-        world_state = obs["world_state"]
-        world_state = world_state[None].repeat(self._env.num_allies, axis=0)
-        one_hot = jnp.eye(self._env.num_allies)
-        return jnp.concatenate((world_state, one_hot), axis=1)
+        @partial(jax.vmap, in_axes=(0, None))
+        def _roll_obs(aidx, all_obs):
+            robs = jnp.roll(all_obs, -aidx, axis=0)
+            robs = robs.flatten()
+            return robs
+
+        all_obs = jnp.array([obs[agent] for agent in self._env.agents]).flatten()
+        all_obs = jnp.expand_dims(all_obs, axis=0).repeat(self._env.num_agents, axis=0)
+        return all_obs
 
     def world_state_size(self):
-
-        return self._world_state_size
+        spaces = [self._env.observation_space(agent) for agent in self._env.agents]
+        return sum([space.shape[-1] for space in spaces])
 
 
 class ScannedRNN(nn.Module):
@@ -91,10 +74,9 @@ class ScannedRNN(nn.Module):
         """Applies the module."""
         rnn_state = carry
         ins, resets = x
-        # print('ins', ins)
         rnn_state = jnp.where(
             resets[:, np.newaxis],
-            self.initialize_carry(ins.shape[0], ins.shape[1]),
+            self.initialize_carry(*rnn_state.shape),
             rnn_state,
         )
         new_rnn_state, y = nn.GRUCell(features=ins.shape[1])(rnn_state, ins)
@@ -113,7 +95,7 @@ class ActorRNN(nn.Module):
 
     @nn.compact
     def __call__(self, hidden, x):
-        obs, dones, avail_actions = x
+        obs, dones = x
         embedding = nn.Dense(
             self.config["FC_DIM_SIZE"],
             kernel_init=orthogonal(np.sqrt(2)),
@@ -130,11 +112,9 @@ class ActorRNN(nn.Module):
             bias_init=constant(0.0),
         )(embedding)
         actor_mean = nn.relu(actor_mean)
-        actor_mean = nn.Dense(
+        action_logits = nn.Dense(
             self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
         )(actor_mean)
-        unavail_actions = 1 - avail_actions
-        action_logits = actor_mean - (unavail_actions * 1e10)
 
         pi = distrax.Categorical(logits=action_logits)
 
@@ -180,12 +160,10 @@ class Transition(NamedTuple):
     obs: jnp.ndarray
     world_state: jnp.ndarray
     info: jnp.ndarray
-    avail_actions: jnp.ndarray
 
 
 def batchify(x: dict, agent_list, num_actors):
     x = jnp.stack([x[a] for a in agent_list])
-    # print('batchify', x.shape)
     return x.reshape((num_actors, -1))
 
 
@@ -195,8 +173,7 @@ def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
 
 
 def make_train(config):
-    scenario = map_name_to_scenario(config["MAP_NAME"])
-    env = HeuristicEnemySMAX(scenario=scenario, **config["ENV_KWARGS"])
+    env = jaxmarl.make(config["ENV_NAME"], **config["ENV_KWARGS"])
     config["NUM_ACTORS"] = env.num_agents * config["NUM_ENVS"]
     config["NUM_UPDATES"] = (
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -210,8 +187,8 @@ def make_train(config):
         else config["CLIP_EPS"]
     )
 
-    env = SMAXWorldStateWrapper(env, config["OBS_WITH_AGENT_ID"])
-    env = SMAXLogWrapper(env)
+    env = MPEWorldStateWrapper(env)
+    env = MPELogWrapper(env)
 
     def linear_schedule(count):
         frac = (
@@ -233,12 +210,12 @@ def make_train(config):
                 (1, config["NUM_ENVS"], env.observation_space(env.agents[0]).shape[0])
             ),
             jnp.zeros((1, config["NUM_ENVS"])),
-            jnp.zeros((1, config["NUM_ENVS"], env.action_space(env.agents[0]).n)),
         )
         ac_init_hstate = ScannedRNN.initialize_carry(
             config["NUM_ENVS"], config["GRU_HIDDEN_DIM"]
         )
         actor_network_params = actor_network.init(_rng_actor, ac_init_hstate, ac_init_x)
+
         cr_init_x = (
             jnp.zeros(
                 (
@@ -246,7 +223,7 @@ def make_train(config):
                     config["NUM_ENVS"],
                     env.world_state_size(),
                 )
-            ),
+            ),  #  + env.observation_space(env.agents[0]).shape[0]
             jnp.zeros((1, config["NUM_ENVS"])),
         )
         cr_init_hstate = ScannedRNN.initialize_carry(
@@ -289,8 +266,12 @@ def make_train(config):
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
         obsv, env_state = jax.vmap(env.reset, in_axes=(0,))(reset_rng)
-        ac_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], 128)
-        cr_init_hstate = ScannedRNN.initialize_carry(config["NUM_ACTORS"], 128)
+        ac_init_hstate = ScannedRNN.initialize_carry(
+            config["NUM_ACTORS"], config["GRU_HIDDEN_DIM"]
+        )
+        cr_init_hstate = ScannedRNN.initialize_carry(
+            config["NUM_ACTORS"], config["GRU_HIDDEN_DIM"]
+        )
 
         # TRAIN LOOP
         def _update_step(update_runner_state, unused):
@@ -304,17 +285,11 @@ def make_train(config):
 
                 # SELECT ACTION
                 rng, _rng = jax.random.split(rng)
-                avail_actions = jax.vmap(env.get_avail_actions)(env_state.env_state)
-                avail_actions = jax.lax.stop_gradient(
-                    batchify(avail_actions, env.agents, config["NUM_ACTORS"])
-                )
                 obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
                 ac_in = (
                     obs_batch[np.newaxis, :],
                     last_done[np.newaxis, :],
-                    avail_actions,
                 )
-                # print('env step ac in', ac_in)
                 ac_hstate, pi = actor_network.apply(
                     train_states[0].params, hstates[0], ac_in
                 )
@@ -323,14 +298,11 @@ def make_train(config):
                 env_act = unbatchify(
                     action, env.agents, config["NUM_ENVS"], env.num_agents
                 )
-                env_act = {k: v.squeeze() for k, v in env_act.items()}
-
                 # VALUE
                 # output of wrapper is (num_envs, num_agents, world_state_size)
                 # swap axes to (num_agents, num_envs, world_state_size) before reshaping to (num_actors, world_state_size)
                 world_state = last_obs["world_state"].swapaxes(0, 1)
                 world_state = world_state.reshape((config["NUM_ACTORS"], -1))
-
                 cr_in = (
                     world_state[None, :],
                     last_done[np.newaxis, :],
@@ -357,7 +329,6 @@ def make_train(config):
                     obs_batch,
                     world_state,
                     info,
-                    avail_actions,
                 )
                 runner_state = (
                     train_states,
@@ -379,7 +350,6 @@ def make_train(config):
 
             last_world_state = last_obs["world_state"].swapaxes(0, 1)
             last_world_state = last_world_state.reshape((config["NUM_ACTORS"], -1))
-
             cr_in = (
                 last_world_state[None, :],
                 last_done[np.newaxis, :],
@@ -428,7 +398,7 @@ def make_train(config):
                         _, pi = actor_network.apply(
                             actor_params,
                             init_hstate.squeeze(),
-                            (traj_batch.obs, traj_batch.done, traj_batch.avail_actions),
+                            (traj_batch.obs, traj_batch.done),
                         )
                         log_prob = pi.log_prob(traj_batch.action)
 
@@ -454,7 +424,6 @@ def make_train(config):
                         clip_frac = jnp.mean(jnp.abs(ratio - 1) > config["CLIP_EPS"])
 
                         actor_loss = loss_actor - config["ENT_COEF"] * entropy
-
                         return actor_loss, (
                             loss_actor,
                             entropy,
@@ -489,12 +458,10 @@ def make_train(config):
                     actor_loss, actor_grads = actor_grad_fn(
                         actor_train_state.params, ac_init_hstate, traj_batch, advantages
                     )
-                    actor_grad_norm = pytree_norm(actor_grads)
                     critic_grad_fn = jax.value_and_grad(_critic_loss_fn, has_aux=True)
                     critic_loss, critic_grads = critic_grad_fn(
                         critic_train_state.params, cr_init_hstate, traj_batch, targets
                     )
-                    critic_grad_norm = pytree_norm(critic_grads)
 
                     actor_train_state = actor_train_state.apply_gradients(
                         grads=actor_grads
@@ -512,8 +479,6 @@ def make_train(config):
                         "ratio": actor_loss[1][2],
                         "approx_kl": actor_loss[1][3],
                         "clip_frac": actor_loss[1][4],
-                        "actor_grad_norm": actor_grad_norm,
-                        "critic_grad_norm": critic_grad_norm,
                     }
 
                     return (actor_train_state, critic_train_state), loss_info
@@ -559,7 +524,6 @@ def make_train(config):
                     shuffled_batch,
                 )
 
-                # train_states = (actor_train_state, critic_train_state)
                 train_states, loss_info = jax.lax.scan(
                     _update_minbatch, train_states, minibatches
                 )
@@ -589,23 +553,12 @@ def make_train(config):
 
             train_states = update_state[0]
             metric = traj_batch.info
-            metric = jax.tree.map(
-                lambda x: x.reshape(
-                    (config["NUM_STEPS"], config["NUM_ENVS"], env.num_agents)
-                ),
-                traj_batch.info,
-            )
             metric["loss"] = loss_info
             rng = update_state[-1]
 
             def callback(exp_id, metric):
                 log_dict = {
-                    "return": metric["returned_episode_returns"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
-                    "win_rate": metric["returned_won_episode"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
+                    "returns": metric["returned_episode_returns"][-1, :].mean(),
                     "env_step": metric["update_steps"]
                     * config["NUM_ENVS"]
                     * config["NUM_STEPS"],
@@ -643,8 +596,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        group = f"MAPPO_{config['MAP_NAME']}"
-        job_type = f"MAPPO_{config['MAP_NAME']}"
+        group = f"MAPPO_{config['ENV_NAME']}"
+        job_type = f"MAPPO_{config['ENV_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER

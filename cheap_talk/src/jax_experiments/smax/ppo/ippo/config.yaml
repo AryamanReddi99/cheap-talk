@@ -17,7 +17,7 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "2s3z"
+"MAP_NAME": "smacv2_5_units"
 "SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 
