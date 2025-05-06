@@ -632,121 +632,199 @@ def make_train(config):
                         grads=critic_grads
                     )
 
-                    # get k1 probs
-                    actor_params_k1 = actor_train_state.params
-                    _, pi_k1 = actor_network.apply(
-                        actor_params_k1,
-                        actor_hidden_state_init.squeeze(),
+                    def _k_update(carry_k, unused):
                         (
+                            actor_train_state,
+                            actor_params_k0,
+                            actor_opt_state_k0,
+                            actor_hidden_state_init,
                             obs,
                             done,
-                        ),
-                    )
-                    log_prob_k1 = pi_k1.log_prob(action)
-                    log_prob_k1_reshape = log_prob_k1.reshape(
-                        -1, env.num_agents, config["NUM_ENVS"]
-                    )
-                    log_prob_k1_prod = jnp.sum(log_prob_k1_reshape, axis=1)
-                    log_prob_k1_joint = jnp.tile(log_prob_k1_prod, (1, env.num_agents))
+                            action,
+                            minibatch_actor_hidden_state_init,
+                            minibatch_obs,
+                            minibatch_done,
+                            minibatch_action,
+                            minibatch_advantages,
+                            minibatch_log_prob_k0,
+                            minibatch_log_prob_k0_joint,
+                            permutation,
+                        ) = carry_k
 
-                    batch_k2 = (
-                        log_prob_k1,
-                        log_prob_k1_joint,
-                    )
-                    shuffled_batch_k2 = jax.tree.map(
-                        lambda x: jnp.take(x, permutation, axis=1), batch_k2
-                    )
-                    shuffled_batch_reshaped_k2 = jax.tree.map(
-                        lambda x: jnp.reshape(  # reshapes shuffled batch into separate minibatches by adding a dimension after actor dim
-                            # e.g. advantages_stack (128,320) -> (128,2,160) if NUM_MINIBATCHES = 2
-                            # traj_batch_stack.obs (128,320,127) -> (128,2,160,127)
-                            x,
-                            list(x.shape[0:1])
-                            + [config["NUM_MINIBATCHES"], -1]
-                            + list(x.shape[2:]),
-                        ),
-                        shuffled_batch_k2,
-                    )
-                    minibatches_k2 = (
-                        jax.tree.map(  # move minibatch dimension to the front
-                            lambda x: jnp.moveaxis(x, 1, 0), shuffled_batch_reshaped_k2
-                        )
-                    )
-
-                    minibatch_log_prob_k1 = minibatches_k2[0][minibatch_idx]
-                    minibatch_log_prob_k1_joint = minibatches_k2[1][minibatch_idx]
-
-                    # reset actor
-                    actor_train_state = actor_train_state.replace(
-                        params=actor_params_k0,
-                        opt_state=actor_opt_state_k0,
-                    )
-
-                    def _actor_loss_fn_k2(
-                        actor_params,
-                        actor_hidden_state_init,
-                        obs,
-                        done,
-                        action,
-                        gae,
-                        log_prob_k0,
-                        log_prob_k0_joint,
-                        log_prob_k1,
-                        log_prob_k1_joint,
-                    ):
-                        # RERUN NETWORK
-                        _, pi = actor_network.apply(
-                            actor_params,
+                        # get k probs
+                        actor_params_k = actor_train_state.params
+                        _, pi_k = actor_network.apply(
+                            actor_params_k,
                             actor_hidden_state_init.squeeze(),
                             (
                                 obs,
                                 done,
                             ),
                         )
-                        log_prob = pi.log_prob(action)
-
-                        # CALCULATE ACTOR LOSS
-                        logratio_is = (
-                            log_prob
-                            + log_prob_k1_joint
-                            - log_prob_k0_joint
-                            - log_prob_k1
+                        log_prob_k = pi_k.log_prob(action)
+                        log_prob_k_reshape = log_prob_k.reshape(
+                            -1, env.num_agents, config["NUM_ENVS"]
+                        )
+                        log_prob_k_prod = jnp.sum(log_prob_k_reshape, axis=1)
+                        log_prob_k_joint = jnp.tile(
+                            log_prob_k_prod, (1, env.num_agents)
                         )
 
-                        ratio_is = jnp.exp(logratio_is)
-                        gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                        loss_actor1 = ratio_is * gae
-                        loss_actor2 = (
-                            jnp.clip(
-                                ratio_is,
-                                1.0 - config["CLIP_EPS"],
-                                1.0 + config["CLIP_EPS"],
+                        batch_k = (
+                            log_prob_k,
+                            log_prob_k_joint,
+                        )
+                        shuffled_batch_k = jax.tree.map(
+                            lambda x: jnp.take(x, permutation, axis=1), batch_k
+                        )
+                        shuffled_batch_reshaped_k = jax.tree.map(
+                            lambda x: jnp.reshape(  # reshapes shuffled batch into separate minibatches by adding a dimension after actor dim
+                                # e.g. advantages_stack (128,320) -> (128,2,160) if NUM_MINIBATCHES = 2
+                                # traj_batch_stack.obs (128,320,127) -> (128,2,160,127)
+                                x,
+                                list(x.shape[0:1])
+                                + [config["NUM_MINIBATCHES"], -1]
+                                + list(x.shape[2:]),
+                            ),
+                            shuffled_batch_k,
+                        )
+                        minibatches_k = (
+                            jax.tree.map(  # move minibatch dimension to the front
+                                lambda x: jnp.moveaxis(x, 1, 0),
+                                shuffled_batch_reshaped_k,
                             )
-                            * gae
-                        )
-                        loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
-                        loss_actor = loss_actor.mean()
-                        entropy = pi.entropy().mean()
-
-                        # debug
-                        approx_kl = ((ratio_is - 1) - logratio_is).mean()
-                        clip_frac = jnp.mean(jnp.abs(ratio_is - 1) > config["CLIP_EPS"])
-
-                        actor_loss = loss_actor - config["ENT_COEF"] * entropy
-
-                        return actor_loss, (
-                            loss_actor,
-                            entropy,
-                            ratio_is,
-                            approx_kl,
-                            clip_frac,
                         )
 
-                    actor_grad_fn_k2 = jax.value_and_grad(
-                        _actor_loss_fn_k2, has_aux=True
-                    )
-                    actor_loss_k2, actor_grads_k2 = actor_grad_fn_k2(
-                        actor_train_state.params,
+                        minibatch_log_prob_k = minibatches_k[0][minibatch_idx]
+                        minibatch_log_prob_k_joint = minibatches_k[1][minibatch_idx]
+
+                        # reset actor
+                        actor_train_state = actor_train_state.replace(
+                            params=actor_params_k0,
+                            opt_state=actor_opt_state_k0,
+                        )
+
+                        def _actor_loss_fn_k(
+                            actor_params,
+                            actor_hidden_state_init,
+                            obs,
+                            done,
+                            action,
+                            gae,
+                            log_prob_k0,
+                            log_prob_k0_joint,
+                            log_prob_k,
+                            log_prob_k_joint,
+                        ):
+                            # RERUN NETWORK
+                            _, pi = actor_network.apply(
+                                actor_params,
+                                actor_hidden_state_init.squeeze(),
+                                (
+                                    obs,
+                                    done,
+                                ),
+                            )
+                            log_prob = pi.log_prob(action)
+
+                            # CALCULATE ACTOR LOSS
+                            logratio_is = (
+                                log_prob
+                                + log_prob_k_joint
+                                - log_prob_k0_joint
+                                - log_prob_k
+                            )
+
+                            ratio_is = jnp.exp(logratio_is)
+                            gae = (gae - gae.mean()) / (gae.std() + 1e-8)
+                            loss_actor1 = ratio_is * gae
+                            loss_actor2 = (
+                                jnp.clip(
+                                    ratio_is,
+                                    1.0 - config["CLIP_EPS"],
+                                    1.0 + config["CLIP_EPS"],
+                                )
+                                * gae
+                            )
+                            loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
+                            loss_actor = loss_actor.mean()
+                            entropy = pi.entropy().mean()
+
+                            # debug
+                            approx_kl = ((ratio_is - 1) - logratio_is).mean()
+                            clip_frac = jnp.mean(
+                                jnp.abs(ratio_is - 1) > config["CLIP_EPS"]
+                            )
+
+                            actor_loss = loss_actor - config["ENT_COEF"] * entropy
+
+                            return actor_loss, (
+                                loss_actor,
+                                entropy,
+                                ratio_is,
+                                approx_kl,
+                                clip_frac,
+                            )
+
+                        actor_grad_fn_k = jax.value_and_grad(
+                            _actor_loss_fn_k, has_aux=True
+                        )
+                        actor_loss_k, actor_grads_k = actor_grad_fn_k(
+                            actor_train_state.params,
+                            minibatch_actor_hidden_state_init,
+                            minibatch_obs,
+                            minibatch_done,
+                            minibatch_action,
+                            minibatch_advantages,
+                            minibatch_log_prob_k0,
+                            minibatch_log_prob_k0_joint,
+                            minibatch_log_prob_k,
+                            minibatch_log_prob_k_joint,
+                        )
+
+                        actor_grad_norm_k = pytree_norm(actor_grads_k)
+
+                        actor_train_state = actor_train_state.apply_gradients(
+                            grads=actor_grads_k
+                        )
+
+                        carry_k = (
+                            actor_train_state,
+                            actor_params_k0,
+                            actor_opt_state_k0,
+                            actor_hidden_state_init,
+                            obs,
+                            done,
+                            action,
+                            minibatch_actor_hidden_state_init,
+                            minibatch_obs,
+                            minibatch_done,
+                            minibatch_action,
+                            minibatch_advantages,
+                            minibatch_log_prob_k0,
+                            minibatch_log_prob_k0_joint,
+                            permutation,
+                        )
+
+                        loss_info_k = {
+                            "actor_loss_k": actor_loss_k[0],
+                            "entropy_k": actor_loss_k[1][1],
+                            "ratio_k": actor_loss_k[1][2],
+                            "approx_kl_k": actor_loss_k[1][3],
+                            "clip_frac_k": actor_loss_k[1][4],
+                            "actor_grad_norm_k": actor_grad_norm_k,
+                        }
+
+                        return carry_k, loss_info_k
+
+                    carry_k = (
+                        actor_train_state,
+                        actor_params_k0,
+                        actor_opt_state_k0,
+                        actor_hidden_state_init,
+                        obs,
+                        done,
+                        action,
                         minibatch_actor_hidden_state_init,
                         minibatch_obs,
                         minibatch_done,
@@ -754,14 +832,13 @@ def make_train(config):
                         minibatch_advantages,
                         minibatch_log_prob_k0,
                         minibatch_log_prob_k0_joint,
-                        minibatch_log_prob_k1,
-                        minibatch_log_prob_k1_joint,
+                        permutation,
                     )
-                    actor_grad_norm_k2 = pytree_norm(actor_grads_k2)
 
-                    actor_train_state = actor_train_state.apply_gradients(
-                        grads=actor_grads_k2
+                    carry_k, loss_info_k = jax.lax.scan(
+                        _k_update, carry_k, None, config["K"] - 1
                     )
+                    actor_train_state = carry_k[0]
 
                     total_loss = actor_loss[0] + critic_loss[0]
                     loss_info = {
@@ -772,15 +849,9 @@ def make_train(config):
                         "ratio": actor_loss[1][2],
                         "approx_kl": actor_loss[1][3],
                         "clip_frac": actor_loss[1][4],
+                        "actor_grad_norm": actor_grad_norm_k1,
                     }
-                    loss_info_k = {
-                        "actor_loss_k": actor_loss_k2[0],
-                        "entropy_k": actor_loss_k2[1][1],
-                        "ratio_k": actor_loss_k2[1][2],
-                        "approx_kl_k": actor_loss_k2[1][3],
-                        "clip_frac_k": actor_loss_k2[1][4],
-                        "actor_grad_norm_k": actor_grad_norm_k2,
-                    }
+                    loss_info_k = {k: v.mean() for k, v in loss_info_k.items()}
 
                     return (
                         actor_train_state,
@@ -938,14 +1009,14 @@ def make_train(config):
     return train
 
 
-@hydra.main(version_base=None, config_path="./", config_name="config_ik2m")
+@hydra.main(version_base=None, config_path="./", config_name="config_ikm")
 def main(config):
     try:
         config = OmegaConf.to_container(config)
 
         # WANDB
-        group = f"K2MAPPO_{config['ENV_NAME']}"
-        job_type = f"K2MAPPO_{config['ENV_NAME']}"
+        group = f"K{config['K']}M_{config['ENV_NAME']}"
+        job_type = f"K{config['K']}M_{config['ENV_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER

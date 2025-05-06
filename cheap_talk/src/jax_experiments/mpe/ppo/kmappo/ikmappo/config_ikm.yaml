@@ -17,6 +17,7 @@
 "ACTIVATION": "tanh"
 "FC_DIM_SIZE": 128
 "GRU_HIDDEN_DIM": 128
+"K": 2
 
 "ENV_NAME": "MPE_simple_spread_v3"
 "SEED": 0
@@ -26,4 +27,4 @@
 # WandB Params
 "PROJECT": "mpe"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "online" # online, disabled
+"WANDB_MODE" : "disabled" # online, disabled
