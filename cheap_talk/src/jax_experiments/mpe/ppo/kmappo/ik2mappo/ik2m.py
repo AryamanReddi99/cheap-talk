@@ -249,7 +249,7 @@ class UpdateRunnerState:
 
 def make_train(config):
     # Environment
-    scenario = map_name_to_scenario(config["MAP_NAME"])
+    scenario = map_name_to_scenario(config["ENV_NAME"])
     env = HeuristicEnemySMAX(scenario=scenario, **config["ENV_KWARGS"])
     env = SMAXWorldStateWrapper(env, config["OBS_WITH_AGENT_ID"])
     env = SMAXLogWrapper(env)
