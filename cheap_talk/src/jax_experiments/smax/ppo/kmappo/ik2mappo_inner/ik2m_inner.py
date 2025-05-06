@@ -743,8 +743,6 @@ def make_train(config):
                     )
 
                     # get k1 probs
-
-                    # DEBUG
                     actor_params_k1 = actor_train_state.params
                     _, pi_k1 = actor_network.apply(
                         actor_params_k1,
@@ -763,8 +761,6 @@ def make_train(config):
                     log_prob_k1_joint = jnp.tile(log_prob_k1_prod, (1, env.num_agents))
 
                     batch_k2 = (
-                        log_prob_k0,
-                        log_prob_k0_joint,
                         log_prob_k1,
                         log_prob_k1_joint,
                     )
@@ -788,10 +784,8 @@ def make_train(config):
                         )
                     )
 
-                    minibatch_log_prob_k0 = minibatches_k2[0][minibatch_idx]
-                    minibatch_log_prob_k0_joint = minibatches_k2[1][minibatch_idx]
-                    minibatch_log_prob_k1 = minibatches_k2[2][minibatch_idx]
-                    minibatch_log_prob_k1_joint = minibatches_k2[3][minibatch_idx]
+                    minibatch_log_prob_k1 = minibatches_k2[0][minibatch_idx]
+                    minibatch_log_prob_k1_joint = minibatches_k2[1][minibatch_idx]
 
                     # reset actor
                     actor_train_state = actor_train_state.replace(

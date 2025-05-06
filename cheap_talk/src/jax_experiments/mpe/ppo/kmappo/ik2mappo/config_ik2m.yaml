@@ -2,6 +2,8 @@
 "NUM_ENVS": 16 
 "NUM_STEPS": 128 
 "LR": 5e-4
+"ACTOR_OPTIMIZER": "adam" # adam, rmsprop
+"CRITIC_OPTIMIZER": "adam" # adam, rmsprop
 "ANNEAL_LR": True
 "UPDATE_EPOCHS": 5
 "NUM_MINIBATCHES": 2
@@ -24,4 +26,4 @@
 # WandB Params
 "PROJECT": "mpe"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "online" # online, disabled
+"WANDB_MODE" : "disabled" # online, disabled
