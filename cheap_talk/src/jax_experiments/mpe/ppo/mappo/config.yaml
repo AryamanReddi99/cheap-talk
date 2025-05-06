@@ -17,7 +17,7 @@
 "GRU_HIDDEN_DIM": 128
 
 "ENV_NAME": "MPE_simple_reference_v3"
-"SEED": 0
+"SEED": 1
 "NUM_SEEDS": 5
 "ENV_KWARGS": {}
 
