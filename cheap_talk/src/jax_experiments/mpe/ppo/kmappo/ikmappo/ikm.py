@@ -1016,6 +1016,8 @@ def main(config):
 
         # WANDB
         group = f"K{config['K']}M_{config['ENV_NAME']}"
+        if "num_agents" in config["ENV_KWARGS"].keys():
+            job_type += f"_N{config['ENV_KWARGS']['num_agents']}"
         job_type = f"K{config['K']}M_{config['ENV_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")

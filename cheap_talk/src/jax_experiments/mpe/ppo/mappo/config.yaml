@@ -19,7 +19,7 @@
 "ENV_NAME": "MPE_simple_reference_v3"
 "SEED": 1
 "NUM_SEEDS": 5
-"ENV_KWARGS": {}
+"ENV_KWARGS": {"num_agents": 5}
 
 # WandB Params
 "PROJECT": "mpe"
