@@ -14,4 +14,4 @@ MAP_NAME=$1
 SEED=${2:-0}
 NUM_SEEDS=${3}
 echo "Running with SEED=${SEED}"
-python qmix.py MAP_NAME=$MAP_NAME SEED=$SEED NUM_SEEDS=$NUM_SEEDS
+python ik2m_inner.py MAP_NAME=$MAP_NAME SEED=$SEED NUM_SEEDS=$NUM_SEEDS
