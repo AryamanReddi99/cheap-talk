@@ -16,10 +16,10 @@
 "FC_DIM_SIZE": 128
 "GRU_HIDDEN_DIM": 128
 
-"ENV_NAME": "MPE_simple_spread_v3"
-"SEED": 1
+"ENV_NAME": "MPE_simple_tag_v3"
+"SEED": 0
 "NUM_SEEDS": 5
-"ENV_KWARGS": {"num_agents": 5}
+"ENV_KWARGS": {}
 
 # WandB Params
 "PROJECT": "mpe"
