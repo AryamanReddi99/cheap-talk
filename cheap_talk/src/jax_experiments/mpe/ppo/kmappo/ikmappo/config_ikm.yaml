@@ -2,7 +2,7 @@
 "NUM_ENVS": 16 
 "NUM_STEPS": 128 
 "LR": 5e-4
-"ACTOR_OPTIMIZER": "rmsprop" # adam, rmsprop
+"ACTOR_OPTIMIZER": "adam" # adam, rmsprop
 "CRITIC_OPTIMIZER": "adam" # adam, rmsprop
 "ANNEAL_LR": True
 "UPDATE_EPOCHS": 5
@@ -18,11 +18,11 @@
 "FC_DIM_SIZE": 128
 "GRU_HIDDEN_DIM": 128
 
-"K": 2
+"K": 3
 "ENV_NAME": "MPE_simple_reference_v3"
 "SEED": 0
 "NUM_SEEDS": 5
-"ENV_KWARGS": {"num_agents": 5}
+"ENV_KWARGS": {}
 
 # WandB Params
 "PROJECT": "mpe"

@@ -817,7 +817,7 @@ def make_train(config):
 
                         return carry_k, loss_info_k
 
-                    carry_k = (
+                    init_carry_k = (
                         actor_train_state,
                         actor_params_k0,
                         actor_opt_state_k0,
@@ -835,10 +835,10 @@ def make_train(config):
                         permutation,
                     )
 
-                    carry_k, loss_info_k = jax.lax.scan(
-                        _k_update, carry_k, None, config["K"] - 1
+                    final_carry_k, loss_info_k = jax.lax.scan(
+                        _k_update, init_carry_k, None, config["K"] - 1
                     )
-                    actor_train_state = carry_k[0]
+                    actor_train_state = final_carry_k[0]
 
                     total_loss = actor_loss[0] + critic_loss[0]
                     loss_info = {
@@ -1015,8 +1015,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"MAPPO_{config['ENV_NAME']}"
-        group = f"MAPPO_{config['ENV_NAME']}"
+        job_type = f"K{config['K']}M_{config['ENV_NAME']}"
+        group = f"K{config['K']}M_{config['ENV_NAME']}"
         if "num_agents" in config["ENV_KWARGS"].keys():
             job_type += f"_N{config['ENV_KWARGS']['num_agents']}"
         if config["USE_TIMESTAMP"]:

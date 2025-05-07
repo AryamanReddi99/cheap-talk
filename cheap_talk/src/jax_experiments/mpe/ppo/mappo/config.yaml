@@ -16,7 +16,7 @@
 "FC_DIM_SIZE": 128
 "GRU_HIDDEN_DIM": 128
 
-"ENV_NAME": "MPE_simple_reference_v3"
+"ENV_NAME": "MPE_simple_spread_v3"
 "SEED": 1
 "NUM_SEEDS": 5
 "ENV_KWARGS": {"num_agents": 5}

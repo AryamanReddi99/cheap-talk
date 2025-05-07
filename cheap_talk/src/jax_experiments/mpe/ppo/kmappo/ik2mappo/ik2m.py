@@ -944,8 +944,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"MAPPO_{config['ENV_NAME']}"
-        group = f"MAPPO_{config['ENV_NAME']}"
+        job_type = f"K2MAPPO_{config['ENV_NAME']}"
+        group = f"K2MAPPO_{config['ENV_NAME']}"
         if "num_agents" in config["ENV_KWARGS"].keys():
             job_type += f"_N{config['ENV_KWARGS']['num_agents']}"
         if config["USE_TIMESTAMP"]:
