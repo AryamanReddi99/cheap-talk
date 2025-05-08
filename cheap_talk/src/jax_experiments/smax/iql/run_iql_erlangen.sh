@@ -8,7 +8,7 @@
 #SBATCH -o ./logs_sbatch/%A_%a.out
 #SBATCH -e ./logs_sbatch/%A_%a.err ## Make sure to create the logs directory
 
-MAP_NAME=$1
+MAP_NAME=${1}
 SEED=${2:-0}
 NUM_SEEDS=${3}
 echo "Running with SEED=${SEED}"
