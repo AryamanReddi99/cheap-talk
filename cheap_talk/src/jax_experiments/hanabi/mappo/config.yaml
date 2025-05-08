@@ -15,14 +15,15 @@
 "MAX_GRAD_NORM": 0.5
 "ACTIVATION": "relu"
 "ENV_NAME": "hanabi"
-"SEED": 30
-"NUM_SEEDS": 2
 "ENV_KWARGS": {}
 "ANNEAL_LR": True
 
+"SEED": 0
+"NUM_SEEDS": 2
+
 # WandB Params
-"WANDB_MODE": "disabled"
-"ENTITY": ""
-"PROJECT": ""
+"PROJECT": "hanabi"
+"USE_TIMESTAMP": True
+"WANDB_MODE" : "online" # online, disabled
 
 "SAVE_PATH": "baselines/MAPPO/checkpoints"
