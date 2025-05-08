@@ -606,8 +606,8 @@ def main(config):
     try:
         config = OmegaConf.to_container(config)
         # WANDB
-        job_type = f"IPPO_{config['ENV_NAME']}"
-        group = f"IPPO_{config['ENV_NAME']}"
+        job_type = f"MAPPO_{config['ENV_NAME']}"
+        group = f"MAPPO_{config['ENV_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
