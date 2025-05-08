@@ -18,10 +18,10 @@
 
 "ENV_NAME": "MPE_simple_tag_v3"
 "SEED": 0
-"NUM_SEEDS": 5
+"NUM_SEEDS": 1
 "ENV_KWARGS": {}
 
 # WandB Params
 "PROJECT": "mpe"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "online" # online, disabled
+"WANDB_MODE" : "disabled" # online, disabled
