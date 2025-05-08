@@ -610,8 +610,8 @@ def main(config):
         env, env_name = env_from_config(copy.deepcopy(config))
 
         # WANDB
-        job_type = f"QMIX_{config['MAP_NAME']}"
-        group = f"QMIX_{config['MAP_NAME']}"
+        job_type = f"IQL_{config['MAP_NAME']}"
+        group = f"IQL_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
