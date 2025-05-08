@@ -34,7 +34,7 @@
 # WandB Params
 "PROJECT": "smax"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "disabled" # online, disabled
+"WANDB_MODE" : "online" # online, disabled
 
 # evaluate
 "TEST_DURING_TRAINING": True
