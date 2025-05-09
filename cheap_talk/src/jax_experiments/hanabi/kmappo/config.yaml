@@ -2,6 +2,8 @@
 "NUM_ENVS": 1024 
 "NUM_STEPS": 128 
 "TOTAL_TIMESTEPS": 1e9
+"ACTOR_OPTIMIZER": "adam" # adam, rmsprop
+"CRITIC_OPTIMIZER": "adam" # adam, rmsprop
 "FC_DIM_SIZE": 128
 "GRU_HIDDEN_DIM": 128
 "UPDATE_EPOCHS": 4
