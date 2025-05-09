@@ -968,19 +968,14 @@ def make_train(config):
             metric["loss_k"] = loss_info_k
             metric["update_step"] = update_step
 
-            def callback(exp_id, metric):
+            def callback(exp_id, metrics):
                 log_dict = {
-                    "return": metric["returned_episode_returns"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
-                    "win_rate": metric["returned_won_episode"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
-                    "env_step": metric["update_step"]
+                    "returns": metrics["returned_episode_returns"][-1, :].mean(),
+                    "env_step": metrics["update_steps"]
                     * config["NUM_ENVS"]
                     * config["NUM_STEPS"],
-                    **metric["loss"],
-                    **metric["loss_k"],
+                    **metrics["loss"],
+                    **metrics["loss_k"],
                 }
 
                 np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
