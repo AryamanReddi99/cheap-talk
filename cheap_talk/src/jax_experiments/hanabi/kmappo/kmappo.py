@@ -971,7 +971,7 @@ def make_train(config):
             def callback(exp_id, metrics):
                 log_dict = {
                     "returns": metrics["returned_episode_returns"][-1, :].mean(),
-                    "env_step": metrics["update_steps"]
+                    "env_step": metrics["update_step"]
                     * config["NUM_ENVS"]
                     * config["NUM_STEPS"],
                     **metrics["loss"],
