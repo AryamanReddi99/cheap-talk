@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=2:mem=2GB:ngpus=1
+#PBS -l select=1:ncpus=2:mem=4GB:ngpus=1
 #PBS -l walltime=2:00:00
 #PBS -j oe
 #PBS -N job

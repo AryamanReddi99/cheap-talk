@@ -87,77 +87,6 @@ class RNNQNetwork(nn.Module):
         return hidden, q_vals
 
 
-class HyperNetwork(nn.Module):
-    """HyperNetwork for generating weights of QMix' mixing network."""
-
-    hidden_dim: int
-    output_dim: int
-    init_scale: float
-
-    @nn.compact
-    def __call__(self, x):
-        x = nn.Dense(
-            self.hidden_dim,
-            kernel_init=orthogonal(self.init_scale),
-            bias_init=constant(0.0),
-        )(x)
-        x = nn.relu(x)
-        x = nn.Dense(
-            self.output_dim,
-            kernel_init=orthogonal(self.init_scale),
-            bias_init=constant(0.0),
-        )(x)
-        return x
-
-
-class MixingNetwork(nn.Module):
-    """
-    Mixing network for projecting individual agent Q-values into Q_tot. Follows the original QMix implementation.
-    """
-
-    embedding_dim: int
-    hypernet_hidden_dim: int
-    init_scale: float
-
-    @nn.compact
-    def __call__(self, q_vals, states):
-
-        n_agents, time_steps, batch_size = q_vals.shape
-        q_vals = jnp.transpose(q_vals, (1, 2, 0))  # (time_steps, batch_size, n_agents)
-
-        # hypernetwork
-        w_1 = HyperNetwork(
-            hidden_dim=self.hypernet_hidden_dim,
-            output_dim=self.embedding_dim * n_agents,
-            init_scale=self.init_scale,
-        )(states)
-        b_1 = nn.Dense(
-            self.embedding_dim,
-            kernel_init=orthogonal(self.init_scale),
-            bias_init=constant(0.0),
-        )(states)
-        w_2 = HyperNetwork(
-            hidden_dim=self.hypernet_hidden_dim,
-            output_dim=self.embedding_dim,
-            init_scale=self.init_scale,
-        )(states)
-        b_2 = HyperNetwork(
-            hidden_dim=self.embedding_dim, output_dim=1, init_scale=self.init_scale
-        )(states)
-
-        # monotonicity and reshaping
-        w_1 = jnp.abs(w_1.reshape(time_steps, batch_size, n_agents, self.embedding_dim))
-        b_1 = b_1.reshape(time_steps, batch_size, 1, self.embedding_dim)
-        w_2 = jnp.abs(w_2.reshape(time_steps, batch_size, self.embedding_dim, 1))
-        b_2 = b_2.reshape(time_steps, batch_size, 1, 1)
-
-        # mix
-        hidden = nn.elu(jnp.matmul(q_vals[:, :, None, :], w_1) + b_1)
-        q_tot = jnp.matmul(hidden, w_2) + b_2
-
-        return q_tot.squeeze()  # (time_steps, batch_size)
-
-
 @chex.dataclass(frozen=True)
 class Timestep:
     obs: dict
@@ -235,7 +164,50 @@ def make_train(config, env):
             env, batch_size=config["TEST_NUM_ENVS"]
         )  # batched env for testing (has different batch size)
 
-        # to initalize some variables is necessary to sample a trajectory to know its strucutre
+        # INIT NETWORK AND OPTIMIZER
+        network = RNNQNetwork(
+            action_dim=wrapped_env.max_action_space,
+            hidden_dim=config["HIDDEN_SIZE"],
+        )
+
+        def create_agent(rng):
+            init_x = (
+                jnp.zeros(
+                    (1, 1, wrapped_env.obs_size)
+                ),  # (time_step, batch_size, obs_size)
+                jnp.zeros((1, 1)),  # (time_step, batch size)
+            )
+            init_hs = ScannedRNN.initialize_carry(
+                config["HIDDEN_SIZE"], 1
+            )  # (batch_size, hidden_dim)
+            network_params = network.init(rng, init_hs, *init_x)
+
+            lr_scheduler = optax.linear_schedule(
+                init_value=config["LR"],
+                end_value=1e-10,
+                transition_steps=(config["NUM_EPOCHS"]) * config["NUM_UPDATES"],
+            )
+
+            lr = lr_scheduler if config.get("LR_LINEAR_DECAY", False) else config["LR"]
+
+            tx = optax.chain(
+                optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
+                optax.radam(learning_rate=lr),
+            )
+
+            train_state = CustomTrainState.create(
+                apply_fn=network.apply,
+                params=network_params,
+                target_network_params=network_params,
+                tx=tx,
+            )
+            return train_state
+
+        rng, _rng = jax.random.split(rng)
+        train_state = create_agent(rng)
+
+        # INIT BUFFER
+        # to initalize the buffer is necessary to sample a trajectory to know its strucutre
         def _env_sample_step(env_state, unused):
             rng, key_a, key_s = jax.random.split(
                 jax.random.PRNGKey(0), 3
@@ -265,69 +237,6 @@ def make_train(config, env):
         sample_traj_unbatched = jax.tree.map(
             lambda x: x[:, 0], sample_traj
         )  # remove the NUM_ENV dim
-
-        # INIT NETWORK AND OPTIMIZER
-        network = RNNQNetwork(
-            action_dim=wrapped_env.max_action_space,
-            hidden_dim=config["HIDDEN_SIZE"],
-        )
-
-        mixer = MixingNetwork(
-            config["MIXER_EMBEDDING_DIM"],
-            config["MIXER_HYPERNET_HIDDEN_DIM"],
-            config["MIXER_INIT_SCALE"],
-        )
-
-        def create_agent(rng):
-            init_x = (
-                jnp.zeros(
-                    (1, 1, wrapped_env.obs_size)
-                ),  # (time_step, batch_size, obs_size)
-                jnp.zeros((1, 1)),  # (time_step, batch size)
-            )
-            init_hs = ScannedRNN.initialize_carry(
-                config["HIDDEN_SIZE"], 1
-            )  # (batch_size, hidden_dim)
-            agent_params = network.init(rng, init_hs, *init_x)
-
-            # init mixer
-            rng, _rng = jax.random.split(rng)
-            init_x = jnp.zeros((len(env.agents), 1, 1))  # q vals: agents, time, batch
-            state_size = sample_traj.obs["__all__"].shape[
-                -1
-            ]  # get the state shape from the buffer
-            init_state = jnp.zeros(
-                (1, 1, state_size)
-            )  # (time_step, batch_size, obs_size)
-            mixer_params = mixer.init(_rng, init_x, init_state)
-
-            network_params = {"agent": agent_params, "mixer": mixer_params}
-
-            lr_scheduler = optax.linear_schedule(
-                init_value=config["LR"],
-                end_value=1e-10,
-                transition_steps=(config["NUM_EPOCHS"]) * config["NUM_UPDATES"],
-            )
-
-            lr = lr_scheduler if config.get("LR_LINEAR_DECAY", False) else config["LR"]
-
-            tx = optax.chain(
-                optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                optax.radam(learning_rate=lr),
-            )
-
-            train_state = CustomTrainState.create(
-                apply_fn=network.apply,
-                params=network_params,
-                target_network_params=network_params,
-                tx=tx,
-            )
-            return train_state
-
-        rng, _rng = jax.random.split(rng)
-        train_state = create_agent(rng)
-
-        # INIT BUFFER
         buffer = fbx.make_trajectory_buffer(
             max_length_time_axis=config["BUFFER_SIZE"] // config["NUM_ENVS"],
             min_length_time_axis=config["BUFFER_BATCH_SIZE"],
@@ -355,7 +264,7 @@ def make_train(config, env):
                 new_hs, q_vals = jax.vmap(
                     network.apply, in_axes=(None, 0, 0, 0)
                 )(  # vmap across the agent dim
-                    train_state.params["agent"],
+                    train_state.params,
                     hs,
                     _obs,
                     _dones,
@@ -448,7 +357,7 @@ def make_train(config, env):
                 _avail_actions = batchify(minibatch.avail_actions)
 
                 _, q_next_target = jax.vmap(network.apply, in_axes=(None, 0, 0, 0))(
-                    train_state.target_network_params["agent"],
+                    train_state.target_network_params,
                     init_hs,
                     _obs,
                     _dones,
@@ -456,7 +365,7 @@ def make_train(config, env):
 
                 def _loss_fn(params):
                     _, q_vals = jax.vmap(network.apply, in_axes=(None, 0, 0, 0))(
-                        params["agent"],
+                        params,
                         init_hs,
                         _obs,
                         _dones,
@@ -483,24 +392,19 @@ def make_train(config, env):
                         -1
                     )  # (num_agents, timesteps, batch_size,)
 
-                    qmix_next = mixer.apply(
-                        train_state.target_network_params["mixer"],
-                        q_next,
-                        minibatch.obs["__all__"],
-                    )
-                    qmix_target = (
+                    vdn_target = (
                         minibatch.rewards["__all__"][:-1]
                         + (
                             1 - minibatch.dones["__all__"][:-1]
                         )  # use next done because last done was saved for rnn re-init
                         * config["GAMMA"]
-                        * qmix_next[1:]  # sum over agents
+                        * jnp.sum(q_next, axis=0)[1:]  # sum over agents
                     )
 
-                    qmix = mixer.apply(
-                        params["mixer"], chosen_action_q_vals, minibatch.obs["__all__"]
-                    )[:-1]
-                    loss = jnp.mean((qmix - jax.lax.stop_gradient(qmix_target)) ** 2)
+                    chosen_action_q_vals = jnp.sum(chosen_action_q_vals, axis=0)[:-1]
+                    loss = jnp.mean(
+                        (chosen_action_q_vals - jax.lax.stop_gradient(vdn_target)) ** 2
+                    )
 
                     return loss, chosen_action_q_vals.mean()
 
@@ -560,7 +464,6 @@ def make_train(config, env):
             }
             metrics.update(jax.tree.map(lambda x: x.mean(), infos))
 
-            # update the test metrics
             if config.get("TEST_DURING_TRAINING", True):
                 rng, _rng = jax.random.split(rng)
                 test_state = jax.lax.cond(
@@ -588,7 +491,7 @@ def make_train(config, env):
             if not config.get("TEST_DURING_TRAINING", True):
                 return None
 
-            params = train_state.params["agent"]
+            params = train_state.params
 
             def _greedy_env_step(step_state, unused):
                 params, env_state, last_obs, last_dones, hstate, rng = step_state
@@ -689,12 +592,12 @@ def env_from_config(config):
 def main(config):
     try:
         config = OmegaConf.to_container(config)
-        alg_name = config.get("ALG_NAME", "qmix_rnn")
+        alg_name = config.get("ALG_NAME", "vdn_rnn")
         env, env_name = env_from_config(copy.deepcopy(config))
 
         # WANDB
-        job_type = f"QMIX_{config['MAP_NAME']}"
-        group = f"QMIX_{config['MAP_NAME']}"
+        job_type = f"VDN_{config['MAP_NAME']}"
+        group = f"VDN_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
