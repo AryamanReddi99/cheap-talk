@@ -11,7 +11,4 @@ module load nvidia/cuda-12.1.1
 conda activate /work/prabino/aryaman/envs/cheap
 export WANDB_API_KEY=846439c3adcf172dff32ec92ba48c80e918eee48
 
-MAP_NAME=${1}
-SEED=${2:-0}
-NUM_SEEDS=${3}
 python iql.py MAP_NAME=$MAP_NAME SEED=$SEED NUM_SEEDS=$NUM_SEEDS
