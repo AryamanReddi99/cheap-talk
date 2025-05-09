@@ -17,7 +17,7 @@
 "MAX_GRAD_NORM": 0.5
 "ACTIVATION": "relu"
 "ENV_NAME": "hanabi"
-"ENV_KWARGS": {}
+"ENV_KWARGS": {"num_agents": 5}
 "ANNEAL_LR": True
 
 "K": 2

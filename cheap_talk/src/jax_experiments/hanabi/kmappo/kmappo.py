@@ -1021,9 +1021,10 @@ def make_train(config):
 def main(config):
     try:
         config = OmegaConf.to_container(config)
+        num_agents = config["KWARGS"].get("num_agents", 2)
         # WANDB
-        job_type = f"K{config['K']}MAPPO_{config['ENV_NAME']}"
-        group = f"K{config['K']}MAPPO_{config['ENV_NAME']}"
+        job_type = f"MAPPO_{num_agents}{config['ENV_NAME']}"
+        group = f"MAPPO_{num_agents}{config['ENV_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
