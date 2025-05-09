@@ -248,12 +248,18 @@ def make_train(config):
             actor_network_params = actor_network.init(
                 _rng_actor, actor_hidden_state_init, ac_init_x
             )
+            if config["ENV_KWARGS"]["num_agents"] == 2:
+                # NOTE hardcoded
+                state_size = 658
+            elif config["ENV_KWARGS"]["num_agents"] == 5:
+                # NOTE hardcoded
+                state_size = 1280
             cr_init_x = (
                 jnp.zeros(
                     (
                         1,
                         config["NUM_ENVS"],
-                        658,
+                        state_size,
                     )
                 ),
                 jnp.zeros((1, config["NUM_ENVS"])),
