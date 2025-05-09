@@ -218,13 +218,18 @@ def make_train(config):
             config["NUM_ENVS"], config["GRU_HIDDEN_DIM"]
         )
         actor_network_params = actor_network.init(_rng_actor, ac_init_hstate, ac_init_x)
-        print("ac init x", ac_init_x)
+        if config["ENV_KWARGS"]["num_agents"] == 2:
+            # NOTE hardcoded
+            state_size = 658
+        elif config["ENV_KWARGS"]["num_agents"] == 5:
+            # NOTE hardcoded
+            state_size = 1280
         cr_init_x = (
             jnp.zeros(
                 (
                     1,
                     config["NUM_ENVS"],
-                    658,
+                    state_size,  # NOTE hardcoded
                 )
             ),  # NOTE hardcoded
             jnp.zeros((1, config["NUM_ENVS"])),
