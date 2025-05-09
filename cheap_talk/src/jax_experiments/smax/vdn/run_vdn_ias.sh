@@ -4,7 +4,7 @@
 #SBATCH -n 1  ## ALWAYS leave this value to 1. This is only used for MPI, which is not supported now. 
 #SBATCH -c 1
 #SBATCH --mem-per-cpu 2G
-#SBATCH -t 02:00:00
+#SBATCH -t 01:30:00
 #SBATCH -p gpu
 #SBATCH --gres=gpu:1
 #SBATCH -o ./logs_sbatch/%A_%a.out
