@@ -1021,7 +1021,7 @@ def make_train(config):
 def main(config):
     try:
         config = OmegaConf.to_container(config)
-        num_agents = config["KWARGS"].get("num_agents", 2)
+        num_agents = config["ENV_KWARGS"].get("num_agents", 2)
         # WANDB
         job_type = f"MAPPO_{num_agents}{config['ENV_NAME']}"
         group = f"MAPPO_{num_agents}{config['ENV_NAME']}"
