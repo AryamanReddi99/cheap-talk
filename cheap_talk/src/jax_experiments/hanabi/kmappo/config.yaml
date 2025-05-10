@@ -22,7 +22,7 @@
 
 "K": 2
 "SEED": 0
-"NUM_SEEDS": 2
+"NUM_SEEDS": 1
 
 # WandB Params
 "PROJECT": "hanabi"

@@ -1029,8 +1029,8 @@ def main(config):
         config = OmegaConf.to_container(config)
         num_agents = config["ENV_KWARGS"].get("num_agents", 2)
         # WANDB
-        job_type = f"MAPPO_{num_agents}{config['ENV_NAME']}"
-        group = f"MAPPO_{num_agents}{config['ENV_NAME']}"
+        job_type = f"K2MAPPO_{num_agents}{config['ENV_NAME']}"
+        group = f"K2MAPPO_{num_agents}{config['ENV_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
