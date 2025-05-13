@@ -1026,7 +1026,7 @@ def make_train(config):
                                 logratio = log_prob - traj_batch.log_prob
                                 ratio = jnp.exp(logratio)
                                 gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                                loss_actor_all = ratio * gae
+                                loss_actor_all = -ratio * gae
                                 loss_actor_masked = jnp.where(
                                     loss_mask > 0, loss_actor_all, 0
                                 )
@@ -1285,8 +1285,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"POLA_KL{config['KL_COEF']}_{config['MAP_NAME']}"
-        group = f"POLA_KL{config['KL_COEF']}_{config['MAP_NAME']}"
+        job_type = f"POLA_KL{config['KL_COEF']}_K1CR_{config['MAP_NAME']}"
+        group = f"POLA_KL{config['KL_COEF']}_K1CR_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
