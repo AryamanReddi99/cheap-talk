@@ -1,0 +1,39 @@
+"TOTAL_TIMESTEPS": 1e7
+"NUM_ENVS": 64 
+"NUM_STEPS": 128
+"LR": 0.004
+"ACTOR_OPTIMIZER": "adam" # adam, rmsprop
+"CRITIC_OPTIMIZER": "adam" # adam, rmsprop
+"ANNEAL_LR": True
+"UPDATE_EPOCHS": 2
+"NUM_MINIBATCHES": 2
+"GAMMA": 0.99
+"GAE_LAMBDA": 0.95
+"CLIP_EPS": 0.2
+"ENT_COEF": 0.0
+"VF_COEF": 0.5
+"MAX_GRAD_NORM": 0.5
+"SCALE_ACTOR_GRAD": True
+"SCALE_CRITIC_GRAD": True
+"K0_CRITIC_FOR_K2_UPDATE": True
+"ACTIVATION": "relu"
+"OBS_WITH_AGENT_ID": True
+"GRU_HIDDEN_DIM": 128
+"FC_DIM_SIZE": 128
+
+"KL_COEF": 150
+
+"SCALE_CLIP_EPS": False
+"ENV_NAME": "HeuristicEnemySMAX"
+"MAP_NAME": "3s_vs_5z"
+"SEED": 0
+"NUM_SEEDS": 5
+"ENV_KWARGS": 
+  "see_enemy_actions": True
+  "walls_cause_death": True
+  "attack_mode": "closest"
+
+# WandB Params
+"PROJECT": "smax"
+"USE_TIMESTAMP": True
+"WANDB_MODE" : "online" # online, disabled
