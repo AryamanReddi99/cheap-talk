@@ -1286,9 +1286,14 @@ def main(config):
     try:
         config = OmegaConf.to_container(config)
 
+        if config["K0_CRITIC_FOR_K2_UPDATE"]:
+            cr_type = "K0CR"
+        else:
+            cr_type = "K1CR"
+
         # WANDB
-        job_type = f"POLA_KL{config['KL_COEF']}_K1CR_{config['MAP_NAME']}"
-        group = f"POLA_KL{config['KL_COEF']}_K1CR_{config['MAP_NAME']}"
+        job_type = f"POLA_KL{config['KL_COEF']}_{cr_type}_{config['MAP_NAME']}"
+        group = f"POLA_KL{config['KL_COEF']}_{cr_type}_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
