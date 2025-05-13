@@ -1026,7 +1026,7 @@ def make_train(config):
                                 logratio = log_prob - traj_batch.log_prob
                                 ratio = jnp.exp(logratio)
                                 gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                                loss_actor_all = -ratio * gae
+                                loss_actor_all = ratio * gae
                                 loss_actor_masked = jnp.where(
                                     loss_mask > 0, loss_actor_all, 0
                                 )
@@ -1061,9 +1061,11 @@ def make_train(config):
                                     * loss_mask
                                 ).sum() / loss_mask.sum()
 
-                                loss_actor = loss_actor - config["KL_COEF"] * approx_kl
+                                loss_actor = -(
+                                    loss_actor - config["KL_COEF"] * approx_kl
+                                )
 
-                                actor_loss = loss_actor - config["ENT_COEF"] * entropy
+                                actor_loss = loss_actor + config["ENT_COEF"] * entropy
 
                                 return actor_loss, (
                                     loss_actor,
