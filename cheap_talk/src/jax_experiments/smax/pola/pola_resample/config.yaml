@@ -13,19 +13,18 @@
 "ENT_COEF": 0.0
 "VF_COEF": 0.5
 "MAX_GRAD_NORM": 0.5
-"SCALE_ACTOR_GRAD": True
-"SCALE_CRITIC_GRAD": True
 "K0_CRITIC_FOR_K2_UPDATE": False
 "ACTIVATION": "relu"
 "OBS_WITH_AGENT_ID": True
 "GRU_HIDDEN_DIM": 128
 "FC_DIM_SIZE": 128
-
-"KL_COEF": 5
-
 "SCALE_CLIP_EPS": False
+
+"KL_COEF": 0
+
+# ENV
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "3s_vs_5z"
+"MAP_NAME": "smacv2_5_units"
 "SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 
