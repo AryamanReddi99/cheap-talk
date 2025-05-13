@@ -21,11 +21,11 @@
 "GRU_HIDDEN_DIM": 128
 "FC_DIM_SIZE": 128
 
-"KL_COEF": 5
+"KL_COEF": 0.1
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "3s_vs_5z"
+"MAP_NAME": "smacv2_5_units"
 "SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 
