@@ -118,6 +118,9 @@ def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
 def make_train(config):
     scenario = map_name_to_scenario(config["MAP_NAME"])
     env = HeuristicEnemySMAX(scenario=scenario, **config["ENV_KWARGS"])
+    env = SMAXLogWrapper(env)
+
+    # Config
     config["NUM_ACTORS"] = env.num_agents * config["NUM_ENVS"]
     config["NUM_UPDATES"] = (
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -130,8 +133,6 @@ def make_train(config):
         if config["SCALE_CLIP_EPS"]
         else config["CLIP_EPS"]
     )
-
-    env = SMAXLogWrapper(env)
 
     def linear_schedule(count):
         frac = (
