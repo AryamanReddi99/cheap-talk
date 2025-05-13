@@ -1051,7 +1051,7 @@ def make_train(config):
     return train
 
 
-@hydra.main(version_base=None, config_path="./", config_name="config_ik2m_inner")
+@hydra.main(version_base=None, config_path="./", config_name="config")
 def main(config):
     try:
         config = OmegaConf.to_container(config)
