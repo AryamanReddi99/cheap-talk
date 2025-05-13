@@ -1285,8 +1285,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"POLA_KL{config["KL_COEF"]}_{config['MAP_NAME']}"
-        group = f"POLA_KL{config["KL_COEF"]}_{config['MAP_NAME']}"
+        job_type = f"POLA_KL{config['KL_COEF']}_{config['MAP_NAME']}"
+        group = f"POLA_KL{config['KL_COEF']}_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
