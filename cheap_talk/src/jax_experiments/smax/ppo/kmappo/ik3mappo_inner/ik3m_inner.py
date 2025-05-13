@@ -674,6 +674,9 @@ def make_train(config):
 
                         actor_loss = loss_actor - config["ENT_COEF"] * entropy
 
+                        # CHANGE
+                        actor_loss = actor_loss / 2
+
                         return actor_loss, (
                             loss_actor,
                             entropy,
@@ -846,6 +849,9 @@ def make_train(config):
                         clip_frac = jnp.mean(jnp.abs(ratio_is - 1) > config["CLIP_EPS"])
 
                         actor_loss = loss_actor - config["ENT_COEF"] * entropy
+
+                        # CHANGE
+                        actor_loss = actor_loss / 2
 
                         return actor_loss, (
                             loss_actor,
@@ -1215,8 +1221,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK3M_IN_{config['MAP_NAME']}"
-        group = f"iK3M_IN_{config['MAP_NAME']}"
+        job_type = f"iK3M_IN_INTERMEDIATE_SCALING_{config['MAP_NAME']}"
+        group = f"iK3M_IN_INTERMEDIATE_SCALING_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER

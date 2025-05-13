@@ -17,6 +17,7 @@
   layout: "coord_ring"
 "layout" : "coord_ring"
 "ANNEAL_LR": True
+"FC_DIM_SIZE": 64
 
 "SEED": 0
 "NUM_SEEDS": 5

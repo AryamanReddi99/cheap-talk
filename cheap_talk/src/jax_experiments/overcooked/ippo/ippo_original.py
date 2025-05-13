@@ -19,8 +19,6 @@ from jaxmarl.viz.overcooked_visualizer import OvercookedVisualizer
 import hydra
 from omegaconf import OmegaConf
 import wandb
-from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
-import datetime
 
 import matplotlib.pyplot as plt
 
@@ -141,6 +139,7 @@ def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
 
 def make_train(config):
     env = jaxmarl.make(config["ENV_NAME"], **config["ENV_KWARGS"])
+
     config["NUM_ACTORS"] = env.num_agents * config["NUM_ENVS"]
     config["NUM_UPDATES"] = (
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -163,7 +162,7 @@ def make_train(config):
         init_value=1.0, end_value=0.0, transition_steps=config["REW_SHAPING_HORIZON"]
     )
 
-    def train(rng, exp_id):
+    def train(rng):
 
         # INIT NETWORK
         network = ActorCritic(env.action_space().n, activation=config["ACTIVATION"])
@@ -204,6 +203,8 @@ def make_train(config):
                 rng, _rng = jax.random.split(rng)
 
                 obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
+
+                print("obs_shape", obs_batch.shape)
 
                 pi, value = network.apply(train_state.params, obs_batch)
                 action = pi.sample(seed=_rng)
@@ -369,15 +370,14 @@ def make_train(config):
 
             rng = update_state[-1]
 
-            def callback(exp_id, metric):
-                np_log_dict = {k: np.array(v) for k, v in metric.items()}
-                LOGGER.log(int(exp_id), np_log_dict)
+            def callback(metric):
+                wandb.log(metric)
 
             update_step = update_step + 1
             metric = jax.tree.map(lambda x: x.mean(), metric)
             metric["update_step"] = update_step
             metric["env_step"] = update_step * config["NUM_STEPS"] * config["NUM_ENVS"]
-            jax.experimental.io_callback(callback, None, exp_id, metric)
+            jax.debug.callback(callback, metric)
 
             runner_state = (train_state, env_state, last_obs, update_step, rng)
             return runner_state, metric
@@ -394,69 +394,51 @@ def make_train(config):
 
 @hydra.main(version_base=None, config_path="./", config_name="config")
 def main(config):
-    try:
-        config = OmegaConf.to_container(config)
-        layout_name = config["layout"]
-        config["ENV_KWARGS"]["layout"] = overcooked_layouts[layout_name]
-        wandb_config = config.copy()
-        wandb_config["ENV_KWARGS"] = {}
+    config = OmegaConf.to_container(config)
+    layout_name = config["layout"]
+    config["ENV_KWARGS"]["layout"] = overcooked_layouts[layout_name]
 
-        # WANDB
-        job_type = f"IPPO_{layout_name}"
-        group = f"IPPO_{layout_name}"
-        if config["USE_TIMESTAMP"]:
-            group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
-        global LOGGER
-        LOGGER = WandbMultiLogger(
-            project=config["PROJECT"],
-            group=group,
-            job_type=job_type,
-            config=wandb_config,
-            mode=config["WANDB_MODE"],
-            seed=config["SEED"],
-            num_seeds=config["NUM_SEEDS"],
-        )
+    wandb.init(
+        project=config["PROJECT"],
+        tags=["IPPO", "FF"],
+        config=config,
+        mode=config["WANDB_MODE"],
+        name=f"ippo_ff_overcooked_{layout_name}",
+    )
 
-        rng = jax.random.PRNGKey(config["SEED"])
-        rng_seeds = jax.random.split(rng, config["NUM_SEEDS"])
-        exp_ids = jnp.arange(config["NUM_SEEDS"])
+    rng = jax.random.PRNGKey(config["SEED"])
+    rngs = jax.random.split(rng, config["NUM_SEEDS"])
+    train_jit = jax.jit(make_train(config))
+    out = jax.vmap(train_jit)(rngs)
 
-        print("Starting compile...")
-        train_vmap = jax.vmap(make_train(config))
-        train_vjit = jax.jit(train_vmap)
-        out = jax.block_until_ready(train_vjit(rng_seeds, exp_ids))
+    filename = f'{config["ENV_NAME"]}_{layout_name}'
+    train_state = jax.tree.map(lambda x: x[0], out["runner_state"][0])
+    state_seq = get_rollout(train_state, config)
+    viz = OvercookedVisualizer()
+    # agent_view_size is hardcoded as it determines the padding around the layout.
+    viz.animate(state_seq, agent_view_size=5, filename=f"{filename}.gif")
 
-        filename = f'{config["ENV_NAME"]}_{layout_name}'
-        train_state = jax.tree.map(lambda x: x[0], out["runner_state"][0])
-        state_seq = get_rollout(train_state, config)
-        viz = OvercookedVisualizer()
-        # agent_view_size is hardcoded as it determines the padding around the layout.
-        viz.animate(state_seq, agent_view_size=5, filename=f"{filename}.gif")
+    """
+    print('** Saving Results **')
+    filename = f'{config["ENV_NAME"]}_cramped_room_new'
+    rewards = out["metrics"]["returned_episode_returns"].mean(-1).reshape((num_seeds, -1))
+    reward_mean = rewards.mean(0)  # mean 
+    reward_std = rewards.std(0) / np.sqrt(num_seeds)  # standard error
+    
+    plt.plot(reward_mean)
+    plt.fill_between(range(len(reward_mean)), reward_mean - reward_std, reward_mean + reward_std, alpha=0.2)
+    # compute standard error
+    plt.xlabel("Update Step")
+    plt.ylabel("Return")
+    plt.savefig(f'{filename}.png')
 
-        """
-        print('** Saving Results **')
-        filename = f'{config["ENV_NAME"]}_cramped_room_new'
-        rewards = out["metrics"]["returned_episode_returns"].mean(-1).reshape((num_seeds, -1))
-        reward_mean = rewards.mean(0)  # mean 
-        reward_std = rewards.std(0) / np.sqrt(num_seeds)  # standard error
-        
-        plt.plot(reward_mean)
-        plt.fill_between(range(len(reward_mean)), reward_mean - reward_std, reward_mean + reward_std, alpha=0.2)
-        # compute standard error
-        plt.xlabel("Update Step")
-        plt.ylabel("Return")
-        plt.savefig(f'{filename}.png')
-
-        # animate first seed
-        train_state = jax.tree.map(lambda x: x[0], out["runner_state"][0])
-        state_seq = get_rollout(train_state, config)
-        viz = OvercookedVisualizer()
-        # agent_view_size is hardcoded as it determines the padding around the layout.
-        viz.animate(state_seq, agent_view_size=5, filename=f"{filename}.gif")
-        """
-    finally:
-        LOGGER.finish()
-        print("Finished training.")
+    # animate first seed
+    train_state = jax.tree.map(lambda x: x[0], out["runner_state"][0])
+    state_seq = get_rollout(train_state, config)
+    viz = OvercookedVisualizer()
+    # agent_view_size is hardcoded as it determines the padding around the layout.
+    viz.animate(state_seq, agent_view_size=5, filename=f"{filename}.gif")
+    """
 
 
 if __name__ == "__main__":

@@ -674,6 +674,9 @@ def make_train(config):
 
                         actor_loss = loss_actor - config["ENT_COEF"] * entropy
 
+                        # CHANGE
+                        actor_loss = actor_loss / 2
+
                         return actor_loss, (
                             loss_actor,
                             entropy,
@@ -847,6 +850,9 @@ def make_train(config):
 
                         actor_loss = loss_actor - config["ENT_COEF"] * entropy
 
+                        # CHANGE
+                        actor_loss = actor_loss / 2
+
                         return actor_loss, (
                             loss_actor,
                             entropy,
@@ -980,6 +986,9 @@ def make_train(config):
                         clip_frac = jnp.mean(jnp.abs(ratio_is - 1) > config["CLIP_EPS"])
 
                         actor_loss = loss_actor - config["ENT_COEF"] * entropy
+
+                        # CHANGE
+                        actor_loss = actor_loss / 2
 
                         return actor_loss, (
                             loss_actor,
