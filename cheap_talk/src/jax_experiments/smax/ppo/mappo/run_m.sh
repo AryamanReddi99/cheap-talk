@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J K2MAPPO
+#SBATCH -J MAPPO
 #SBATCH -a 0 # Controls the number of replication
 #SBATCH -n 1  ## ALWAYS leave this value to 1. This is only used for MPI, which is not supported now. 
 #SBATCH -c 1
