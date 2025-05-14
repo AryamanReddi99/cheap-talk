@@ -41,3 +41,9 @@ for i in range(len(algs)):
 qm = d["QMIX"]
 fn_path = Path(data_save_path) / "IQL.npy"
 np.save(fn_path, qm)
+
+# POLA
+p = d["POLA"]
+fn_path = Path(data_save_path) / "POLA.npy"
+p = p / 2
+np.save(fn_path, p)
