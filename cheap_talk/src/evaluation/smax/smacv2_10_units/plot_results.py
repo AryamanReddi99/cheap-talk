@@ -11,24 +11,18 @@ alg_names = [
     "K2MAPPO",
     "MAPPO",
     "IPPO",
+    "POLA",
     "QMIX",
     "VDN",
     "IQL",
 ]
 
-ORDER = {
-    "MAPPO": 0,
-    "VDN": 1,
-    "IQL": 2,
-    "QMIX": 3,
-    "IPPO": 4,
-    "K2MAPPO": 5,
-}
 
 COLORS = {
     "IQL": "#CC79A7",
     "VDN": "#D55E00",
     "QMIX": "#E69F00",
+    "POLA": "#785EF0",
     "IPPO": "#009E73",
     "MAPPO": "#56B4E9",
     "K2MAPPO": "#0072B2",

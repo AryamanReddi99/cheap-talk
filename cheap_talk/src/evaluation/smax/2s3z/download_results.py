@@ -3,12 +3,24 @@ import numpy as np
 from pathlib import Path
 import os
 
+folder = os.path.dirname(os.path.abspath(__file__))
+folder_name = folder.split("/")[-1]
+data_save_path = Path(folder) / "data"
 
 api = wandb.Api()
 path = "tu-darmstadt-literl/smax"
-algs = ["MAPPO_2s3z", "VDN_2s3z", "IQL_2s3z", "QMIX_2s3z", "IPPO_2s3z", "iK2M_IN_2s3z"]
-alg_names = ["MAPPO", "VDN", "IQL", "QMIX", "IPPO", "K2MAPPO"]
+algs = [
+    f"MAPPO_{folder_name}",
+    f"VDN_{folder_name}",
+    f"IQL_{folder_name}",
+    f"QMIX_{folder_name}",
+    f"IPPO_{folder_name}",
+    f"iK2M_IN_{folder_name}",
+    f"POLA_KL0.1_K0CR_{folder_name}",
+]
+alg_names = ["MAPPO", "VDN", "IQL", "QMIX", "IPPO", "K2MAPPO", "POLA"]
 d = {}
+
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
 data_save_path = Path(fn_path) / "data"

@@ -10,14 +10,15 @@ data_save_path = Path(folder) / "data"
 api = wandb.Api()
 path = "tu-darmstadt-literl/smax"
 algs = [
-    f"MAPPO_ORIGINAL_{folder_name}",
+    f"MAPPO_{folder_name}",
     f"VDN_{folder_name}",
     f"IQL_{folder_name}",
     f"QMIX_{folder_name}",
     f"IPPO_{folder_name}",
     f"iK2M_IN_{folder_name}",
+    f"POLA_KL0.1_K0CR_{folder_name}",
 ]
-alg_names = ["MAPPO", "VDN", "IQL", "QMIX", "IPPO", "K2MAPPO"]
+alg_names = ["MAPPO", "VDN", "IQL", "QMIX", "IPPO", "K2MAPPO", "POLA"]
 d = {}
 
 for i in range(len(algs)):
