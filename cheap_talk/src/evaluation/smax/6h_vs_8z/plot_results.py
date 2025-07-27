@@ -8,24 +8,23 @@ from matplotlib import font_manager
 sns.set_theme()
 
 alg_names = [
-    "K2MAPPO",
     "MAPPO",
     "IPPO",
     "POLA",
     "QMIX",
     "VDN",
     "IQL",
+    "K2MAPPO",
 ]
 
-
 COLORS = {
-    "IQL": "#CC79A7",
-    "VDN": "#D55E00",
-    "QMIX": "#E69F00",
-    "IPPO": "#009E73",
-    "POLA": "#785EF0",
-    "MAPPO": "#56B4E9",
-    "K2MAPPO": "#0072B2",
+    "K2MAPPO": "#117733",
+    "MAPPO": "#44AA99",
+    "IPPO": "#56B4E9",
+    "POLA": "#E69F00",
+    "QMIX": "#0072B2",
+    "VDN": "#FE6100",
+    "IQL": "#CC6677",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
@@ -53,7 +52,7 @@ for i in range(len(alg_names)):
         np.mean(d[alg_names[i]], axis=0),
         label=alg_names[i],
         color=color,
-        linewidth=2,
+        linewidth=3,
     )
 
     std_err = np.std(d[alg_names[i]], axis=0) / np.sqrt(data.shape[0])
@@ -65,22 +64,12 @@ for i in range(len(alg_names)):
         color=color,
     )
 
-ax.set_xlabel("Samples (1e6)", fontsize=16)
-ax.set_ylabel("Win Rate", fontsize=16)
+ax.set_xlabel("Samples (1e6)", fontsize=20)
+ax.set_ylabel("Win Rate", fontsize=20)
+ax.tick_params(axis="both", which="major", labelsize=20)  # Major tick labels
 ax.set_xlim(0, 10)
-ax.set_ylim(-0.01, 1.01)
-ax.legend()
-legend_font_size = 15
-handles, labels = ax.get_legend_handles_labels()
-legend = ax.legend(handles, labels, prop={"size": legend_font_size})
-texts = legend.get_texts()
-font_prop = font_manager.FontProperties(
-    weight="bold", size=legend_font_size
-)  # Create bold font properties
-legend.get_frame().set_alpha(None)
-legend.get_frame().set_facecolor((0, 0, 0, 0))
-legend.get_frame().set_edgecolor((0, 0, 0, 0))
-texts[0].set_fontproperties(font_prop)
+ax.set_ylim(-0.01, None)
+
 
 # Figsize
 fig.set_size_inches(16 / 2.54, 12 / 2.54)  # Set figure size to 20cm by 20cm

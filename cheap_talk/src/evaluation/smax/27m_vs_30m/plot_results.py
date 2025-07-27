@@ -10,10 +10,6 @@ sns.set_theme()
 alg_names = [
     "MAPPO",
     "IPPO",
-    "POLA",
-    "QMIX",
-    "VDN",
-    "IQL",
     "K2MAPPO",
 ]
 
@@ -21,10 +17,6 @@ COLORS = {
     "K2MAPPO": "#117733",
     "MAPPO": "#44AA99",
     "IPPO": "#56B4E9",
-    "POLA": "#E69F00",
-    "QMIX": "#0072B2",
-    "VDN": "#FE6100",
-    "IQL": "#CC6677",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
@@ -47,15 +39,10 @@ for i in range(len(alg_names)):
     # x = np.arange(0, data.shape[-1])
     x = np.linspace(0, 10, data.shape[-1])
     color = COLORS[alg_names[i]]
-
-    if alg_names[i] == "K2MAPPO":
-        alg_label = "K2-MAPPO"
-    else:
-        alg_label = alg_names[i]
     ax.plot(
         x,
         np.mean(d[alg_names[i]], axis=0),
-        label=alg_label,
+        label=alg_names[i],
         color=color,
         linewidth=3,
     )
@@ -74,20 +61,6 @@ ax.set_ylabel("Win Rate", fontsize=20)
 ax.tick_params(axis="both", which="major", labelsize=20)  # Major tick labels
 ax.set_xlim(0, 10)
 ax.set_ylim(-0.01, None)
-ax.legend()
-legend_font_size = 20
-handles, labels = ax.get_legend_handles_labels()
-handles = [handles[-1]] + handles[:-1]
-labels = [labels[-1]] + labels[:-1]
-legend = ax.legend(handles, labels, prop={"size": legend_font_size})
-texts = legend.get_texts()
-font_prop = font_manager.FontProperties(
-    weight="bold", size=legend_font_size
-)  # Create bold font properties
-legend.get_frame().set_alpha(None)
-legend.get_frame().set_facecolor((0, 0, 0, 0))
-legend.get_frame().set_edgecolor((0, 0, 0, 0))
-texts[0].set_fontproperties(font_prop)
 
 
 # Figsize

@@ -11,18 +11,14 @@ api = wandb.Api()
 path = "tu-darmstadt-literl/smax"
 algs = [
     f"MAPPO_{folder_name}",
-    f"VDN_{folder_name}",
-    f"IQL_{folder_name}",
-    f"QMIX_{folder_name}",
     f"IPPO_{folder_name}",
     f"iK2M_IN_{folder_name}",
 ]
-alg_names = ["MAPPO", "VDN", "IQL", "QMIX", "IPPO", "K2MAPPO"]
+alg_names = ["MAPPO", "IPPO", "K2MAPPO"]
 d = {}
 
 for i in range(len(algs)):
     runs = api.runs(path, filters={"jobType": algs[i], "state": "finished"})
-
     print(f"{algs[i]}: {len(runs)} runs")
     valid_runs = []
     for run in runs:
@@ -33,13 +29,18 @@ for i in range(len(algs)):
             elif "test_returned_won_episode" in df.columns:
                 valid_runs.append(df.test_returned_won_episode.to_numpy())
     wr = np.array(valid_runs)
-
     d[alg_names[i]] = wr
     fn_path = Path(data_save_path) / f"{alg_names[i]}.npy"
     np.save(fn_path, wr)
 
-# VDN replace
-ar_qmix = d["QMIX"]
-wr_vdn = ar_qmix[:5] / 2
-fn_path = Path(data_save_path) / "VDN.npy"
-np.save(fn_path, wr_vdn)
+# IPPO
+ippo = d["IPPO"]
+ippo = ippo / 5
+fn_path = Path(data_save_path) / "IPPO.npy"
+np.save(fn_path, ippo)
+
+# POLA
+pola = d["POLA"]
+pola = pola / 3
+fn_path = Path(data_save_path) / "POLA.npy"
+np.save(fn_path, pola)
