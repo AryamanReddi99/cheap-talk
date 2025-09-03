@@ -19,6 +19,7 @@ def worker(project, group, job_type, name, config, mode, queue):
         name=name,
         config=config,
         mode=mode,
+        save_code=True,
     )
     try:
         while True:
