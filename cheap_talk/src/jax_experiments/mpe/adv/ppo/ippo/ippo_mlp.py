@@ -42,6 +42,9 @@ class RunnerState(NamedTuple):
     state: jnp.ndarray
     done_agent: jnp.ndarray
     done_adversary: jnp.ndarray
+    cumulative_return_agent: jnp.ndarray
+    cumulative_return_adversary: jnp.ndarray
+    timesteps: jnp.ndarray  # Track timesteps for each environment
     update_step: int
     rng: Array
 
@@ -51,7 +54,6 @@ class Updatestate(NamedTuple):
     train_state_adversary: TrainState
     running_grad_agent: jnp.ndarray  # Running gradient for cosine similarity
     running_grad_adversary: jnp.ndarray  # Running gradient for cosine similarity
-    running_grad: jnp.ndarray  # Running gradient for cosine similarity
     traj_batch_agent: Transition
     traj_batch_adversary: Transition
     advantages_agent: jnp.ndarray
@@ -61,12 +63,15 @@ class Updatestate(NamedTuple):
     rng: Array
 
 
-def batchify(x: dict, agent_list, num_actors):
+# default jnp array is (time, agent, env, action)
+def batchify(x: dict, agent_list, num_actors):  # convert dict to jnp.ndarray
     x = jnp.stack([x[a] for a in agent_list])
     return x.reshape((num_actors, -1))
 
 
-def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
+def unbatchify(
+    x: jnp.ndarray, agent_list, num_envs, num_actors
+):  # convert jnp.ndarray to dict
     x = x.reshape((num_actors, num_envs, -1))
     return {a: x[i] for i, a in enumerate(agent_list)}
 
@@ -78,6 +83,8 @@ def make_train(config):
 
     # config
     config["num_actors"] = env.num_agents * config["num_envs"]
+    config["num_agents"] = env.num_good_agents * config["num_envs"]
+    config["num_adversaries"] = env.num_adversaries * config["num_envs"]
     config["num_updates"] = (
         config["total_timesteps"] // config["num_steps"] // config["num_envs"]
     )
@@ -93,10 +100,10 @@ def make_train(config):
     def linear_schedule(count):
         frac = (
             1.0
-            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
-            / config["NUM_UPDATES"]
+            - (count // (config["num_minibatches"] * config["num_updates"]))
+            / config["num_updates"]
         )
-        return config["LR"] * frac
+        return config["lr"] * frac
 
     def train(rng, exp_id):
         def train_setup(rng):
@@ -106,6 +113,10 @@ def make_train(config):
             obs, state = jax.vmap(env.reset, in_axes=(0))(_rng_resets)
             obs_agent = {k: obs[k] for k in env.good_agents}
             obs_adversary = {k: obs[k] for k in env.adversaries}
+            obs_agent_batch = batchify(obs_agent, env.good_agents, config["num_agents"])
+            obs_adversary_batch = batchify(
+                obs_adversary, env.adversaries, config["num_adversaries"]
+            )
 
             if config["anneal_lr"]:
                 lr_schedule = linear_schedule
@@ -168,8 +179,10 @@ def make_train(config):
             return (
                 train_state_agent,
                 train_state_adversary,
-                obs_agent,
-                obs_adversary,
+                network_agent,
+                network_adversary,
+                obs_agent_batch,
+                obs_adversary_batch,
                 state,
                 running_grad_agent,
                 running_grad_adversary,
@@ -181,8 +194,8 @@ def make_train(config):
             train_state_adversary,
             network_agent,
             network_adversary,
-            obs_agent,
-            obs_adversary,
+            obs_agent_batch,
+            obs_adversary_batch,
             state,
             running_grad_agent,
             running_grad_adversary,
@@ -190,42 +203,41 @@ def make_train(config):
 
         # TRAIN LOOP
         def _update_step(runner_state, unused):
+            initial_timesteps = runner_state.timesteps
+
             def _env_step(runner_state, unused):
                 train_state_agent = runner_state.train_state_agent
                 train_state_adversary = runner_state.train_state_adversary
-                obs_agent = runner_state.obs_agent
-                obs_adversary = runner_state.obs_adversary
+                obs_agent_batch = runner_state.obs_agent
+                obs_adversary_batch = runner_state.obs_adversary
                 state = runner_state.state
                 done_agent = runner_state.done_agent
                 done_adversary = runner_state.done_adversary
                 rng = runner_state.rng
 
                 # SELECT ACTION
-                rng, _rng = jax.random.split(rng)
-                obs_batch_agent = batchify(
-                    obs_agent, env.good_agents, config["num_actors"]
-                )
-                obs_batch_adversary = batchify(
-                    obs_adversary, env.adversaries, config["num_actors"]
-                )
+                rng, _rng_agent, _rng_adversary = jax.random.split(rng, 3)
                 pi_agent, value_agent = network_agent.apply(
-                    train_state_agent.params, obs_batch_agent
+                    train_state_agent.params, obs_agent_batch
                 )
                 pi_adversary, value_adversary = network_adversary.apply(
-                    train_state_adversary.params, obs_batch_adversary
+                    train_state_adversary.params, obs_adversary_batch
                 )
-                action_agent = pi_agent.sample(seed=_rng)
-                action_adversary = pi_adversary.sample(seed=_rng)
+                action_agent = pi_agent.sample(seed=_rng_agent)
+                action_adversary = pi_adversary.sample(seed=_rng_adversary)
                 log_prob_agent = pi_agent.log_prob(action_agent)
                 log_prob_adversary = pi_adversary.log_prob(action_adversary)
                 env_act_agent = unbatchify(
-                    action_agent, env.good_agents, config["num_envs"], env.num_agents
+                    action_agent,
+                    env.good_agents,
+                    config["num_envs"],
+                    env.num_good_agents,
                 )
                 env_act_adversary = unbatchify(
                     action_adversary,
                     env.adversaries,
                     config["num_envs"],
-                    env.num_agents,
+                    env.num_adversaries,
                 )
                 env_act_agent = {k: v.squeeze() for k, v in env_act_agent.items()}
                 env_act_adversary = {
@@ -240,39 +252,47 @@ def make_train(config):
                     env.step, in_axes=(0, 0, 0)
                 )(rng_step, state, env_act)
                 info = jax.tree.map(lambda x: x.reshape((config["num_actors"])), info)
-                obs_batch_agent = batchify(
-                    new_obs, env.good_agents, config["num_actors"]
+                new_obs_batch_agent = batchify(
+                    new_obs, env.good_agents, config["num_agents"]
                 )
-                obs_batch_adversary = batchify(
-                    new_obs, env.adversaries, config["num_actors"]
+                new_obs_batch_adversary = batchify(
+                    new_obs, env.adversaries, config["num_adversaries"]
                 )
-                done_batch_agent = batchify(
-                    done_agent, env.good_agents, config["num_actors"]
+
+                new_done_batch_agent = batchify(
+                    new_done, env.good_agents, config["num_agents"]
                 ).squeeze()
-                done_batch_adversary = batchify(
-                    done_adversary, env.adversaries, config["num_actors"]
+                new_done_batch_adversary = batchify(
+                    new_done, env.adversaries, config["num_adversaries"]
                 ).squeeze()
+
+                # Update timesteps
+                timesteps = runner_state.timesteps + 1
+                timesteps = jnp.where(new_done["__all__"], 0, timesteps)
+
                 transition_agent = Transition(
-                    obs=obs_batch_agent,
+                    obs=new_obs_batch_agent,
                     action=action_agent.squeeze(),
                     log_prob=log_prob_agent.squeeze(),
-                    reward=batchify(reward, env.agents, config["num_actors"]).squeeze(),
+                    reward=batchify(
+                        reward, env.good_agents, config["num_agents"]
+                    ).squeeze(),
                     done=done_agent,
-                    new_done=new_done,
-                    global_done=jnp.tile(new_done["__all__"], env.num_agents),
+                    new_done=new_done_batch_agent,
+                    global_done=new_done["__all__"],
                     value=value_agent.squeeze(),
                     info=info,
                 )
                 transition_adversary = Transition(
-                    obs=obs_batch_adversary,
+                    obs=new_obs_batch_adversary,
                     action=action_adversary.squeeze(),
                     log_prob=log_prob_adversary.squeeze(),
                     reward=batchify(
-                        reward, env.adversaries, config["num_actors"]
+                        reward, env.adversaries, config["num_adversaries"]
                     ).squeeze(),
                     done=done_adversary,
-                    new_done=new_done,
-                    global_done=jnp.tile(new_done["__all__"], env.num_agents),
+                    new_done=new_done_batch_adversary,
+                    global_done=new_done["__all__"],
                     value=value_adversary.squeeze(),
                     info=info,
                 )
@@ -281,50 +301,46 @@ def make_train(config):
                     train_state_adversary=train_state_adversary,
                     running_grad_agent=runner_state.running_grad_agent,
                     running_grad_adversary=runner_state.running_grad_adversary,
-                    obs_agent=obs_batch_agent,
-                    obs_adversary=obs_batch_adversary,
+                    obs_agent=new_obs_batch_agent,
+                    obs_adversary=new_obs_batch_adversary,
                     state=new_state,
-                    done_agent=done_batch_agent,
-                    done_adversary=done_batch_adversary,
-                    update_step=runner_state.update_steps,
+                    done_agent=done_agent,
+                    done_adversary=done_adversary,
+                    cumulative_return_agent=runner_state.cumulative_return_agent,
+                    cumulative_return_adversary=runner_state.cumulative_return_adversary,
+                    timesteps=timesteps,
+                    update_step=runner_state.update_step,
                     rng=rng,
                 )
-                return runner_state, transition_agent, transition_adversary
+                return runner_state, (transition_agent, transition_adversary)
 
-            runner_state, traj_batch_agent, traj_batch_adversary = jax.lax.scan(
+            runner_state, (traj_batch_agent, traj_batch_adversary) = jax.lax.scan(
                 _env_step, runner_state, None, config["num_steps"]
             )
 
             # CALCULATE ADVANTAGE
             train_state_agent = runner_state.train_state_agent
             train_state_adversary = runner_state.train_state_adversary
-            last_obs_agent = runner_state.obs_agent
-            last_obs_adversary = runner_state.obs_adversary
+            last_obs_agent_batch = runner_state.obs_agent
+            last_obs_adversary_batch = runner_state.obs_adversary
             last_done_agent = runner_state.done_agent
             last_done_adversary = runner_state.done_adversary
             rng = runner_state.rng
 
-            last_obs_batch_agent = batchify(
-                last_obs_agent, env.good_agents, config["num_actors"]
-            )
-            last_obs_batch_adversary = batchify(
-                last_obs_adversary, env.adversaries, config["num_actors"]
-            )
             _, last_val_agent = network_agent.apply(
-                train_state_agent.params, last_obs_batch_agent
+                train_state_agent.params, last_obs_agent_batch
             )
             _, last_val_adversary = network_adversary.apply(
-                train_state_adversary.params, last_obs_batch_adversary
+                train_state_adversary.params, last_obs_adversary_batch
             )
-            last_val = last_val_agent.squeeze()
+            last_val_agent = last_val_agent.squeeze()
             last_val_adversary = last_val_adversary.squeeze()
-            last_val = last_val.squeeze()
 
             def _calculate_gae(traj_batch, last_val):
                 def _get_advantages(gae_and_next_value, transition):
                     gae, next_value = gae_and_next_value
                     done, value, reward = (
-                        transition.global_done,
+                        transition.done,
                         transition.value,
                         transition.reward,
                     )
@@ -418,8 +434,6 @@ def make_train(config):
                     (
                         train_state_agent,
                         train_state_adversary,
-                        network_agent,
-                        network_adversary,
                         running_grad_agent,
                         running_grad_adversary,
                     ) = carry
@@ -436,7 +450,11 @@ def make_train(config):
                     ) = minibatch_adversary
 
                     def _loss_fn(
-                        params, traj_minibatch, gae_minibatch, targets_minibatch
+                        params,
+                        network,
+                        traj_minibatch,
+                        gae_minibatch,
+                        targets_minibatch,
                     ):
                         # RERUN NETWORK
                         pi, value = network.apply(
@@ -500,29 +518,61 @@ def make_train(config):
                         }
 
                     grad_fn = jax.value_and_grad(_loss_fn, has_aux=True)
-                    total_loss, grads = grad_fn(
+                    (loss_agent, loss_info_agent), grads_agent = grad_fn(
                         train_state_agent.params,
-                        traj_minibatch,
-                        advantages_minibatch,
-                        targets_minibatch,
+                        network_agent,
+                        traj_minibatch_agent,
+                        advantages_minibatch_agent,
+                        targets_minibatch_agent,
                     )
-                    updated_train_state = train_state.apply_gradients(grads=grads)
-                    new_running_grad = grads
-                    total_loss[1]["grad_norm"] = pytree_norm(grads)
-                    return (updated_train_state, new_running_grad), total_loss
+                    (loss_adversary, loss_info_adversary), grads_adversary = grad_fn(
+                        train_state_adversary.params,
+                        network_adversary,
+                        traj_minibatch_adversary,
+                        advantages_minibatch_adversary,
+                        targets_minibatch_adversary,
+                    )
+                    updated_train_state_agent = train_state_agent.apply_gradients(
+                        grads=grads_agent
+                    )
+                    updated_train_state_adversary = (
+                        train_state_adversary.apply_gradients(grads=grads_adversary)
+                    )
+                    new_running_grad_agent = grads_agent
+                    new_running_grad_adversary = grads_adversary
+                    total_loss = loss_agent + loss_adversary
+                    loss_info_agent["grad_norm"] = pytree_norm(grads_agent)
+                    loss_info_adversary["grad_norm"] = pytree_norm(grads_adversary)
+
+                    loss_info_agent = {
+                        k + "_agent": v for k, v in loss_info_agent.items()
+                    }
+                    loss_info_adversary = {
+                        k + "_adversary": v for k, v in loss_info_adversary.items()
+                    }
+
+                    loss_info = {**loss_info_agent, **loss_info_adversary}
+                    loss_info["total_loss"] = total_loss
+                    loss_info["loss_agent"] = loss_agent
+                    loss_info["loss_adversary"] = loss_adversary
+
+                    return (
+                        updated_train_state_agent,
+                        updated_train_state_adversary,
+                        new_running_grad_agent,
+                        new_running_grad_adversary,
+                    ), (loss_info)
 
                 (
                     final_train_state_agent,
                     final_train_state_adversary,
                     final_running_grad_agent,
                     final_running_grad_adversary,
-                ), total_loss_agent = jax.lax.scan(
+                ), (loss_info) = jax.lax.scan(
                     _update_minibatch,
                     (
                         train_state_agent,
                         train_state_adversary,
-                        network_agent,
-                        network_adversary,
                         running_grad_agent,
                         running_grad_adversary,
                     ),
@@ -541,7 +591,7 @@ def make_train(config):
                     targets_adversary=targets_adversary,
                     rng=rng,
                 )
-                return update_state, total_loss
+                return update_state, loss_info
 
             update_state = Updatestate(
                 train_state_agent=train_state_agent,
@@ -561,81 +611,186 @@ def make_train(config):
             )
             train_state_agent = final_update_state.train_state_agent
             train_state_adversary = final_update_state.train_state_adversary
-            metric = traj_batch_agent.info
-            metric = jax.tree.map(
+            rng = final_update_state[-1]
+
+            loss_info_mean = jax.tree.map(lambda x: x.mean(), loss_info)
+            batch_info_agent = jax.tree.map(
                 lambda x: x.reshape(
                     (config["num_steps"], config["num_envs"], env.num_agents)
                 ),
                 traj_batch_agent.info,
             )
-            ratio_0 = loss_info[1][3].at[0, 0].get().mean()
-            loss_info = jax.tree.map(lambda x: x.mean(), loss_info)
-            metric["loss"] = {
-                "total_loss": loss_info[0],
-                "value_loss": loss_info[1][0],
-                "actor_loss": loss_info[1][1],
-                "entropy": loss_info[1][2],
-                "ratio": loss_info[1][3],
-                "ratio_0": ratio_0,
-                "approx_kl": loss_info[1][4],
-                "clip_frac": loss_info[1][5],
-            }
+            batch_info_adversary = jax.tree.map(
+                lambda x: x.reshape(
+                    (config["num_steps"], config["num_envs"], env.num_agents)
+                ),
+                traj_batch_adversary.info,
+            )
 
-            rng = update_state[-1]
+            # log returns
+            def _returns(carry_return, inputs):
+                reward, done = inputs
+                cumulative_return = carry_return + reward
+                reset_return = jnp.zeros(reward.shape[1:], dtype=float)
+                carry_return = jnp.where(done, reset_return, cumulative_return)
+                return carry_return, cumulative_return
 
-            def callback(exp_id, metric):
-                log_dict = {
-                    # the metrics have an agent dimension, but this is identical
-                    # for all agents so index into the 0th item of that dimension.
-                    "returns": metric["returned_episode_returns"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
-                    "win_rate": metric["returned_won_episode"][:, :, 0][
-                        metric["returned_episode"][:, :, 0]
-                    ].mean(),
-                    "env_step": metric["update_steps"]
-                    * config["num_envs"]
-                    * config["num_steps"],
-                    **metric["loss"],
-                }
+            # agent
+            reward_agent = traj_batch_agent.reward
+            done_agent = traj_batch_agent.new_done
+            cumulative_return_agent = runner_state.cumulative_return_agent
+
+            new_cumulative_return_agent, returns = jax.lax.scan(
+                _returns,
+                cumulative_return_agent,
+                (reward_agent, done_agent),
+            )
+            only_returns = jnp.where(done_agent, returns, 0)
+            returns_avg_agent = jnp.where(
+                done_agent.sum() > 0, only_returns.sum() / done_agent.sum(), 0.0
+            )
+
+            # adversary
+            reward_adversary = traj_batch_adversary.reward
+            done_adversary = traj_batch_adversary.new_done
+            cumulative_return_adversary = runner_state.cumulative_return_adversary
+
+            new_cumulative_return_adversary, returns = jax.lax.scan(
+                _returns,
+                cumulative_return_adversary,
+                (reward_adversary, done_adversary),
+            )
+            only_returns = jnp.where(done_adversary, returns, 0)
+            returns_avg_adversary = jnp.where(
+                done_adversary.sum() > 0, only_returns.sum() / done_adversary.sum(), 0.0
+            )
+
+            # log episode lengths
+            global_done = traj_batch_agent.global_done
+
+            def _episode_lengths(carry_length, done):
+                cumulative_length = carry_length + 1
+                reset_length = jnp.zeros(done.shape[1:], dtype=jnp.int32)
+                carry_length = jnp.where(done, reset_length, cumulative_length)
+                return carry_length, cumulative_length
+
+            # agent
+            _, lengths = jax.lax.scan(
+                _episode_lengths,
+                initial_timesteps,
+                global_done,
+            )
+            only_episode_ends = jnp.where(
+                global_done, lengths, 0
+            )  # only lengths at done steps
+            episode_length_avg_agent = jnp.where(
+                global_done.sum() > 0, only_episode_ends.sum() / global_done.sum(), 0.0
+            )
+
+            # log network stats
+            network_leaves_agent = jax.tree.leaves(
+                update_state.train_state_agent.params
+            )
+            network_leaves_adversary = jax.tree.leaves(
+                update_state.train_state_adversary.params
+            )
+            flat_network_agent = jnp.concatenate(
+                [jnp.ravel(x) for x in network_leaves_agent]
+            )
+            flat_network_adversary = jnp.concatenate(
+                [jnp.ravel(x) for x in network_leaves_adversary]
+            )
+            network_l1_agent = jnp.sum(jnp.abs(flat_network_agent))
+            network_l2_agent = jnp.linalg.norm(flat_network_agent)
+            network_linfty_agent = jnp.max(jnp.abs(flat_network_agent))
+            network_mu_agent = jnp.mean(flat_network_agent)
+            network_std_agent = jnp.std(flat_network_agent)
+            network_max_agent = jnp.max(flat_network_agent)
+            network_min_agent = jnp.min(flat_network_agent)
+            network_l1_adversary = jnp.sum(jnp.abs(flat_network_adversary))
+            network_l2_adversary = jnp.linalg.norm(flat_network_adversary)
+            network_linfty_adversary = jnp.max(jnp.abs(flat_network_adversary))
+            network_mu_adversary = jnp.mean(flat_network_adversary)
+            network_std_adversary = jnp.std(flat_network_adversary)
+            network_max_adversary = jnp.max(flat_network_adversary)
+            network_min_adversary = jnp.min(flat_network_adversary)
+
+            log_dict = {}
+            log_dict = {**loss_info_mean}
+            log_dict["update_step"] = runner_state.update_step
+            log_dict["env_step"] = (
+                runner_state.update_step * config["num_envs"] * config["num_steps"]
+            )
+            log_dict["samples"] = (
+                runner_state.update_step * config["num_steps"] * config["num_actors"]
+            )
+            log_dict["returns_agent"] = returns_avg_agent
+            log_dict["returns_adversary"] = returns_avg_adversary
+            log_dict["episode_length_avg_agent"] = episode_length_avg_agent
+            log_dict["network_l1_agent"] = network_l1_agent
+            log_dict["network_l2_agent"] = network_l2_agent
+            log_dict["network_linfty_agent"] = network_linfty_agent
+            log_dict["network_mu_agent"] = network_mu_agent
+            log_dict["network_std_agent"] = network_std_agent
+            log_dict["network_max_agent"] = network_max_agent
+            log_dict["network_min_agent"] = network_min_agent
+            log_dict["network_l1_adversary"] = network_l1_adversary
+            log_dict["network_l2_adversary"] = network_l2_adversary
+            log_dict["network_linfty_adversary"] = network_linfty_adversary
+            log_dict["network_mu_adversary"] = network_mu_adversary
+            log_dict["network_std_adversary"] = network_std_adversary
+            log_dict["network_max_adversary"] = network_max_adversary
+            log_dict["network_min_adversary"] = network_min_adversary
+
+            def callback(exp_id, log_dict):
                 np_log_dict = {k: np.array(v) for k, v in log_dict.items()}
                 LOGGER.log(int(exp_id), np_log_dict)
 
-            metric["update_steps"] = runner_state.update_step
-
-            jax.experimental.io_callback(callback, None, exp_id, metric)
+            jax.experimental.io_callback(callback, None, exp_id, log_dict)
             runner_state = RunnerState(
                 train_state_agent=train_state_agent,
                 train_state_adversary=train_state_adversary,
-                running_grad=runner_state.running_grad,
-                obs_agent=last_obs_agent,
-                obs_adversary=last_obs_adversary,
-                state=last_done_agent,
+                running_grad_agent=runner_state.running_grad_agent,
+                running_grad_adversary=runner_state.running_grad_adversary,
+                obs_agent=last_obs_agent_batch,
+                obs_adversary=last_obs_adversary_batch,
+                state=runner_state.state,
                 done_agent=last_done_agent,
                 done_adversary=last_done_adversary,
+                cumulative_return_agent=new_cumulative_return_agent,
+                cumulative_return_adversary=new_cumulative_return_adversary,
+                timesteps=timesteps,
                 update_step=runner_state.update_step + 1,
                 rng=rng,
             )
-            return runner_state, metrics_batch
+            return runner_state, log_dict
 
         rng, _rng = jax.random.split(rng)
+        cumulative_return_agent = jnp.zeros((config["num_agents"]), dtype=float)
+        cumulative_return_adversary = jnp.zeros(
+            (config["num_adversaries"]), dtype=float
+        )
+        timesteps = jnp.zeros((config["num_envs"]), dtype=int)
         initial_runner_state = RunnerState(
             train_state_agent=train_state_agent,
             train_state_adversary=train_state_adversary,
             running_grad_agent=running_grad_agent,
             running_grad_adversary=running_grad_adversary,
-            obs_agent=obs_agent,
-            obs_adversary=obs_adversary,
+            obs_agent=obs_agent_batch,
+            obs_adversary=obs_adversary_batch,
             state=state,
-            done_agent=jnp.zeros((config["num_actors"]), dtype=bool),
-            done_adversary=jnp.zeros((config["num_actors"]), dtype=bool),
+            done_agent=jnp.zeros((config["num_agents"]), dtype=bool),
+            done_adversary=jnp.zeros((config["num_adversaries"]), dtype=bool),
+            cumulative_return_agent=cumulative_return_agent,
+            cumulative_return_adversary=cumulative_return_adversary,
+            timesteps=timesteps,
             update_step=0,
             rng=_rng,
         )
-        final_runner_state, metrics_batch = jax.lax.scan(
+        final_runner_state, log_dict = jax.lax.scan(
             _update_step, initial_runner_state, None, config["num_updates"]
         )
-        return final_runner_state, metrics_batch
+        return final_runner_state, log_dict
 
     return train
 
