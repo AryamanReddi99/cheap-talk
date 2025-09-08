@@ -304,10 +304,12 @@ def make_train(config):
 
             _, last_val_agent = network_agent.apply(
                 train_state_agent.params, last_obs_agent_batch
-            ).squeeze()
+            )
             _, last_val_adversary = network_adversary.apply(
                 train_state_adversary.params, last_obs_adversary_batch
-            ).squeeze()
+            )
+            last_val_agent = last_val_agent.squeeze()
+            last_val_adversary = last_val_adversary.squeeze()
 
             def _calculate_gae(traj_batch, last_val):
                 def _get_advantages(gae_and_next_value, transition):
