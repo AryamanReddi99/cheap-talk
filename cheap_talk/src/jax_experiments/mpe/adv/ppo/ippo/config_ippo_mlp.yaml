@@ -26,3 +26,4 @@ project: "mpe"
 job_type: ippo
 use_timestamp: True
 wandb_mode: "online" # online, disabled
+log_network_stats: True
