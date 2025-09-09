@@ -25,5 +25,5 @@ env_kwargs: {"num_good_agents": 2, "num_adversaries": 1, "num_obs": 2}
 project: "mpe"
 job_type: ippo
 use_timestamp: True
-wandb_mode: "online" # online, disabled
+wandb_mode: "disabled" # online, disabled
 log_network_stats: False
