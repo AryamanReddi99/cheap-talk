@@ -14,29 +14,77 @@ from jax._src.typing import Array
 import hydra
 from omegaconf import OmegaConf
 import jaxmarl
-from jaxmarl.wrappers.baselines import MPELogWrapper
+from functools import partial
+from jaxmarl.wrappers.baselines import MPELogWrapper, JaxMARLWrapper
 from cheap_talk.src.utils.wandb_process import WandbMultiLogger
-from cheap_talk.src.networks.mlp import ActorCriticDiscreteMLP
+from cheap_talk.src.networks.mlp import (
+    ActorCriticDiscreteMLP,
+    ActorDiscreteMLP,
+    CriticMLP,
+)
 from cheap_talk.src.utils.jax_utils import pytree_norm
+
+
+class MPEWorldStateWrapper(JaxMARLWrapper):
+
+    @partial(jax.jit, static_argnums=0)
+    def reset(self, key):
+        obs, env_state = self._env.reset(key)
+        world_state = self.world_state(obs)
+        obs["world_state_agent"] = world_state[: self._env.num_agents]
+        obs["world_state_adversary"] = world_state[self._env.num_agents :]
+        return obs, env_state
+
+    @partial(jax.jit, static_argnums=0)
+    def step(self, key, state, action):
+        obs, env_state, reward, done, info = self._env.step(key, state, action)
+        world_state = self.world_state(obs)
+        obs["world_state_agent"] = world_state[: self._env.num_agents]
+        obs["world_state_adversary"] = world_state[self._env.num_agents :]
+        return obs, env_state, reward, done, info
+
+    @partial(jax.jit, static_argnums=0)
+    def world_state(self, obs):
+        """
+        For each agent: [agent obs, all other agent obs]
+        """
+
+        @partial(jax.vmap, in_axes=(0, None))
+        def _roll_obs(aidx, all_obs):
+            robs = jnp.roll(all_obs, -aidx, axis=0)
+            robs = robs.flatten()
+            return robs
+
+        all_obs = jnp.array([obs[agent] for agent in self._env.agents]).flatten()
+        all_obs = jnp.expand_dims(all_obs, axis=0).repeat(self._env.num_agents, axis=0)
+        return all_obs
+
+    def world_state_size(self):
+        spaces = [self._env.observation_space(agent) for agent in self._env.agents]
+        return sum([space.shape[-1] for space in spaces])
 
 
 class Transition(NamedTuple):
     obs: jnp.ndarray
+    world_state: jnp.ndarray
     action: jnp.ndarray
     log_prob: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
     new_done: jnp.ndarray
-    global_new_done: jnp.ndarray
+    global_done: jnp.ndarray
     value: jnp.ndarray
     info: jnp.ndarray
 
 
 class RunnerState(NamedTuple):
-    train_state_agent: TrainState
-    train_state_adversary: TrainState
+    train_state_actor_agent: TrainState
+    train_state_critic_agent: TrainState
+    train_state_actor_adversary: TrainState
+    train_state_critic_adversary: TrainState
     obs_agent: jnp.ndarray
     obs_adversary: jnp.ndarray
+    world_state: jnp.ndarray
     state: jnp.ndarray
     done_agent: jnp.ndarray
     done_adversary: jnp.ndarray
@@ -47,8 +95,10 @@ class RunnerState(NamedTuple):
 
 
 class Updatestate(NamedTuple):
-    train_state_agent: TrainState
-    train_state_adversary: TrainState
+    train_state_actor_agent: TrainState
+    train_state_critic_agent: TrainState
+    train_state_actor_adversary: TrainState
+    train_state_critic_adversary: TrainState
     traj_batch_agent: Transition
     traj_batch_adversary: Transition
     advantages_agent: jnp.ndarray
@@ -115,59 +165,107 @@ def make_train(config):
                 lr_schedule = linear_schedule
             else:
                 lr_schedule = config["lr"]
-            network_agent = ActorCriticDiscreteMLP(
+
+            # Create separate actor and critic networks
+            actor_network_agent = ActorDiscreteMLP(
                 action_dim=env.action_space(env.good_agents[0]).n,
                 activation=config["activation"],
             )
-            network_adversary = ActorCriticDiscreteMLP(
+            critic_network_agent = CriticMLP(
+                activation=config["activation"],
+            )
+            actor_network_adversary = ActorDiscreteMLP(
                 action_dim=env.action_space(env.adversaries[0]).n,
                 activation=config["activation"],
             )
-            rng, _rng_agent, _rng_adversary = jax.random.split(rng, 3)
-            init_x_agent = jnp.zeros(env.observation_space(env.good_agents[0]).shape)
-            init_x_adversary = jnp.zeros(
-                env.observation_space(env.adversaries[0]).shape
-            )
-            network_params_agent = network_agent.init(_rng_agent, init_x_agent)
-            network_params_adversary = network_adversary.init(
-                _rng_adversary, init_x_adversary
-            )
-            if config["optimizer"] == "adam":
-                optim_agent = optax.adam
-                optim_adversary = optax.adam
-            elif config["optimizer"] == "rmsprop":
-                optim_agent = optax.rmsprop
-                optim_adversary = optax.rmsprop
-            elif config["optimizer"] == "sgd":
-                optim_agent = optax.sgd
-                optim_adversary = optax.sgd
-            else:
-                raise ValueError(f"Invalid optimizer: {config['optimizer']}")
-            tx_agent = optax.chain(
-                optax.clip_by_global_norm(config["max_grad_norm"]),
-                optim_agent(learning_rate=lr_schedule, eps=1e-5),
-            )
-            tx_adversary = optax.chain(
-                optax.clip_by_global_norm(config["max_grad_norm"]),
-                optim_adversary(learning_rate=lr_schedule, eps=1e-5),
+            critic_network_adversary = CriticMLP(
+                activation=config["activation"],
             )
 
-            train_state_agent = TrainState.create(
-                apply_fn=network_agent.apply,
-                params=network_params_agent,
-                tx=tx_agent,
+            (
+                rng,
+                _rng_actor_agent,
+                _rng_critic_agent,
+                _rng_actor_adversary,
+                _rng_critic_adversary,
+            ) = jax.random.split(rng, 5)
+            init_x_agent_actor = jnp.zeros(
+                env.observation_space(env.good_agents[0]).shape
             )
-            train_state_adversary = TrainState.create(
-                apply_fn=network_adversary.apply,
-                params=network_params_adversary,
-                tx=tx_adversary,
+            init_x_agent_critic = jnp.zeros(env.world_state_size())
+            init_x_adversary_actor = jnp.zeros(
+                env.observation_space(env.adversaries[0]).shape
+            )
+            init_x_adversary_critic = jnp.zeros(env.world_state_size())
+            params_agent_actor = actor_network_agent.init(
+                _rng_actor_agent, init_x_agent_actor
+            )
+            params_agent_critic = critic_network_agent.init(
+                _rng_critic_agent, init_x_agent_critic
+            )
+            params_adversary_actor = actor_network_adversary.init(
+                _rng_actor_adversary, init_x_adversary_actor
+            )
+            params_adversary_critic = critic_network_adversary.init(
+                _rng_critic_adversary, init_x_adversary_critic
+            )
+            if config["optimizer"] == "adam":
+                optim = optax.adam
+            elif config["optimizer"] == "rmsprop":
+                optim = optax.rmsprop
+            elif config["optimizer"] == "sgd":
+                optim = optax.sgd
+            else:
+                raise ValueError(f"Invalid optimizer: {config['optimizer']}")
+
+            # Create separate optimizers for each network
+            tx_actor_agent = optax.chain(
+                optax.clip_by_global_norm(config["max_grad_norm"]),
+                optim(learning_rate=lr_schedule, eps=1e-5),
+            )
+            tx_critic_agent = optax.chain(
+                optax.clip_by_global_norm(config["max_grad_norm"]),
+                optim(learning_rate=lr_schedule, eps=1e-5),
+            )
+            tx_actor_adversary = optax.chain(
+                optax.clip_by_global_norm(config["max_grad_norm"]),
+                optim(learning_rate=lr_schedule, eps=1e-5),
+            )
+            tx_critic_adversary = optax.chain(
+                optax.clip_by_global_norm(config["max_grad_norm"]),
+                optim(learning_rate=lr_schedule, eps=1e-5),
+            )
+
+            train_state_actor_agent = TrainState.create(
+                apply_fn=actor_network_agent.apply,
+                params=params_agent_actor,
+                tx=tx_actor_agent,
+            )
+            train_state_critic_agent = TrainState.create(
+                apply_fn=critic_network_agent.apply,
+                params=params_agent_critic,
+                tx=tx_critic_agent,
+            )
+            train_state_actor_adversary = TrainState.create(
+                apply_fn=actor_network_adversary.apply,
+                params=params_adversary_actor,
+                tx=tx_actor_adversary,
+            )
+            train_state_critic_adversary = TrainState.create(
+                apply_fn=critic_network_adversary.apply,
+                params=params_adversary_critic,
+                tx=tx_critic_adversary,
             )
 
             return (
-                train_state_agent,
-                train_state_adversary,
-                network_agent,
-                network_adversary,
+                train_state_actor_agent,
+                train_state_critic_agent,
+                train_state_actor_adversary,
+                train_state_critic_adversary,
+                actor_network_agent,
+                critic_network_agent,
+                actor_network_adversary,
+                critic_network_adversary,
                 obs_agent_batch,
                 obs_adversary_batch,
                 state,
@@ -175,10 +273,14 @@ def make_train(config):
 
         rng, _rng_setup = jax.random.split(rng)
         (
-            train_state_agent,
-            train_state_adversary,
-            network_agent,
-            network_adversary,
+            train_state_actor_agent,
+            train_state_critic_agent,
+            train_state_actor_adversary,
+            train_state_critic_adversary,
+            actor_network_agent,
+            critic_network_agent,
+            actor_network_adversary,
+            critic_network_adversary,
             obs_agent_batch,
             obs_adversary_batch,
             state,
@@ -189,10 +291,13 @@ def make_train(config):
             runner_state, timesteps = carry
 
             def _env_step(runner_state, unused):
-                train_state_agent = runner_state.train_state_agent
-                train_state_adversary = runner_state.train_state_adversary
-                obs_agent_batch = runner_state.obs_agent
-                obs_adversary_batch = runner_state.obs_adversary
+                train_state_actor_agent = runner_state.train_state_actor_agent
+                train_state_critic_agent = runner_state.train_state_critic_agent
+                train_state_actor_adversary = runner_state.train_state_actor_adversary
+                train_state_critic_adversary = runner_state.train_state_critic_adversary
+                obs_agent = runner_state.obs_agent
+                obs_adversary = runner_state.obs_adversary
+                world_state = runner_state.world_state
                 state = runner_state.state
                 done_agent = runner_state.done_agent
                 done_adversary = runner_state.done_adversary
@@ -200,11 +305,11 @@ def make_train(config):
 
                 # SELECT ACTION
                 rng, _rng_agent, _rng_adversary = jax.random.split(rng, 3)
-                pi_agent, value_agent = network_agent.apply(
-                    train_state_agent.params, obs_agent_batch
+                pi_agent = actor_network_agent.apply(
+                    train_state_actor_agent.params, obs_agent_batch
                 )
-                pi_adversary, value_adversary = network_adversary.apply(
-                    train_state_adversary.params, obs_adversary_batch
+                pi_adversary = actor_network_adversary.apply(
+                    train_state_actor_adversary.params, obs_adversary_batch
                 )
                 action_agent = pi_agent.sample(seed=_rng_agent)
                 action_adversary = pi_adversary.sample(seed=_rng_adversary)
@@ -249,7 +354,7 @@ def make_train(config):
                 ).squeeze()
 
                 transition_agent = Transition(
-                    obs=obs_agent_batch,
+                    obs=new_obs_batch_agent,
                     action=action_agent.squeeze(),
                     log_prob=log_prob_agent.squeeze(),
                     reward=batchify(
@@ -257,12 +362,12 @@ def make_train(config):
                     ).squeeze(),
                     done=done_agent,
                     new_done=new_done_batch_agent,
-                    global_new_done=new_done["__all__"],
+                    global_done=new_done["__all__"],
                     value=value_agent.squeeze(),
                     info=info,
                 )
                 transition_adversary = Transition(
-                    obs=obs_adversary_batch,
+                    obs=new_obs_batch_adversary,
                     action=action_adversary.squeeze(),
                     log_prob=log_prob_adversary.squeeze(),
                     reward=batchify(
@@ -270,7 +375,7 @@ def make_train(config):
                     ).squeeze(),
                     done=done_adversary,
                     new_done=new_done_batch_adversary,
-                    global_new_done=new_done["__all__"],
+                    global_done=new_done["__all__"],
                     value=value_adversary.squeeze(),
                     info=info,
                 )
