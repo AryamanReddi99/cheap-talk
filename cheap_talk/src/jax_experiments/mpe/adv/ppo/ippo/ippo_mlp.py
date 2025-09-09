@@ -612,7 +612,7 @@ def make_train(config):
             )
 
             # log episode lengths
-            global_done = traj_batch_agent.global_done
+            global_new_done = traj_batch_agent.global_new_done
 
             def _episode_lengths(carry_length, done):
                 cumulative_length = carry_length + 1
@@ -624,13 +624,15 @@ def make_train(config):
             timesteps, lengths = jax.lax.scan(
                 _episode_lengths,
                 timesteps,
-                global_done,
+                global_new_done,
             )
             only_episode_ends = jnp.where(
-                global_done, lengths, 0
+                global_new_done, lengths, 0
             )  # only lengths at done steps
             episode_length_avg = jnp.where(
-                global_done.sum() > 0, only_episode_ends.sum() / global_done.sum(), 0.0
+                global_new_done.sum() > 0,
+                only_episode_ends.sum() / global_new_done.sum(),
+                0.0,
             )
 
             log_dict = {}
