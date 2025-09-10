@@ -986,6 +986,7 @@ def make_train(config):
             )
             log_dict["returns_agent"] = returns_avg_agent
             log_dict["returns_adversary"] = returns_avg_adversary
+            log_dict["return_total"] = returns_avg_agent + returns_avg_adversary
             log_dict["episode_length"] = episode_length_avg
 
             if config["log_network_stats"]:

@@ -437,17 +437,17 @@ def make_train(config):
                         # actor loss
                         logratio = log_prob - traj_minibatch.log_prob
                         ratio = jnp.exp(logratio)
-                        gae_minibatch = (gae_minibatch - gae_minibatch.mean()) / (
-                            gae_minibatch.std() + 1e-8
-                        )
-                        loss_actor_1 = ratio * gae_minibatch
+                        gae_minibatch_normalized = (
+                            gae_minibatch - gae_minibatch.mean()
+                        ) / (gae_minibatch.std() + 1e-8)
+                        loss_actor_1 = ratio * gae_minibatch_normalized
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio,
                                 1.0 - config["clip_eps"],
                                 1.0 + config["clip_eps"],
                             )
-                            * gae_minibatch
+                            * gae_minibatch_normalized
                         )
                         loss_actor = -jnp.minimum(loss_actor_1, loss_actor_2).mean()
                         entropy = pi.entropy().mean()
@@ -646,6 +646,7 @@ def make_train(config):
             )
             log_dict["returns_agent"] = returns_avg_agent
             log_dict["returns_adversary"] = returns_avg_adversary
+            log_dict["return_total"] = returns_avg_agent + returns_avg_adversary
             log_dict["episode_length"] = episode_length_avg
 
             if config["log_network_stats"]:
@@ -765,7 +766,7 @@ def main(config):
             group=group,
             job_type=job_type,
             config=config,
-            mode=config["wandb_mode"],
+            mode=(lambda: "online" if config["wandb_mode"] else "disabled")(),
             seed=config["seed"],
             num_seeds=config["num_seeds"],
         )
