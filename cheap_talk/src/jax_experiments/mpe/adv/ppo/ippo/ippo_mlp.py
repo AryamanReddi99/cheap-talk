@@ -358,18 +358,24 @@ def make_train(config):
                     rng, 3
                 )
                 permutation_agent = jax.random.permutation(
-                    _rng_permute_agent, config["num_envs"]
+                    _rng_permute_agent, config["num_agents"]
                 )
                 permutation_adversary = jax.random.permutation(
-                    _rng_permute_adversary, config["num_envs"]
+                    _rng_permute_adversary, config["num_adversaries"]
                 )
                 batch_agent = (
-                    traj_batch_agent,
+                    traj_batch_agent.obs,
+                    traj_batch_agent.action,
+                    traj_batch_agent.log_prob,
+                    traj_batch_agent.value,
                     advantages_agent.squeeze(),
                     targets_agent.squeeze(),
                 )
                 batch_adversary = (
-                    traj_batch_adversary,
+                    traj_batch_adversary.obs,
+                    traj_batch_adversary.action,
+                    traj_batch_adversary.log_prob,
+                    traj_batch_adversary.value,
                     advantages_adversary.squeeze(),
                     targets_adversary.squeeze(),
                 )
@@ -410,12 +416,18 @@ def make_train(config):
                     ) = carry
                     minibatch_agent, minibatch_adversary = minibatch
                     (
-                        traj_minibatch_agent,
+                        obs_agent,
+                        action_agent,
+                        log_prob_agent,
+                        value_agent,
                         advantages_minibatch_agent,
                         targets_minibatch_agent,
                     ) = minibatch_agent
                     (
-                        traj_minibatch_adversary,
+                        obs_adversary,
+                        action_adversary,
+                        log_prob_adversary,
+                        value_adversary,
                         advantages_minibatch_adversary,
                         targets_minibatch_adversary,
                     ) = minibatch_adversary
@@ -423,19 +435,22 @@ def make_train(config):
                     def _loss_fn(
                         params,
                         network,
-                        traj_minibatch,
+                        obs_minibatch,
+                        action_minibatch,
+                        log_prob_minibatch,
+                        value_minibatch,
                         gae_minibatch,
                         targets_minibatch,
                     ):
                         # RERUN NETWORK
                         pi, value = network.apply(
                             params,
-                            traj_minibatch.obs,
+                            obs_minibatch,
                         )
-                        log_prob = pi.log_prob(traj_minibatch.action)
+                        log_prob = pi.log_prob(action_minibatch)
 
                         # actor loss
-                        logratio = log_prob - traj_minibatch.log_prob
+                        logratio = log_prob - log_prob_minibatch
                         ratio = jnp.exp(logratio)
                         gae_minibatch_normalized = (
                             gae_minibatch - gae_minibatch.mean()
@@ -453,8 +468,8 @@ def make_train(config):
                         entropy = pi.entropy().mean()
 
                         # critic loss
-                        value_pred_clipped = traj_minibatch.value + (
-                            value - traj_minibatch.value
+                        value_pred_clipped = value_minibatch + (
+                            value - value_minibatch
                         ).clip(-config["clip_eps"], config["clip_eps"])
                         value_loss = jnp.square(value - targets_minibatch)
                         value_loss_clipped = jnp.square(
@@ -493,14 +508,20 @@ def make_train(config):
                     (loss_agent, loss_info_agent), grads_agent = grad_fn(
                         train_state_agent.params,
                         network_agent,
-                        traj_minibatch_agent,
+                        obs_agent,
+                        action_agent,
+                        log_prob_agent,
+                        value_agent,
                         advantages_minibatch_agent,
                         targets_minibatch_agent,
                     )
                     (loss_adversary, loss_info_adversary), grads_adversary = grad_fn(
                         train_state_adversary.params,
                         network_adversary,
-                        traj_minibatch_adversary,
+                        obs_adversary,
+                        action_adversary,
+                        log_prob_adversary,
+                        value_adversary,
                         advantages_minibatch_adversary,
                         targets_minibatch_adversary,
                     )

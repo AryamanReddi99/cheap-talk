@@ -354,15 +354,39 @@ def make_train(config):
                 targets_adversary = update_state.targets_adversary
                 rng = update_state.rng
 
-                # decompose traj_batch
-                obs_agent = traj_batch_agent.obs
-                obs_adversary = traj_batch_adversary.obs
-                value_agent = traj_batch_agent.value
-                value_adversary = traj_batch_adversary.value
-                action_agent = traj_batch_agent.action
-                action_adversary = traj_batch_adversary.action
-                log_prob_agent_k0 = traj_batch_agent.log_prob
-                log_prob_adversary_k0 = traj_batch_adversary.log_prob
+                # Get log_prob_k0_joint
+                log_prob_k0_all = jnp.concatenate(
+                    [traj_batch_agent.log_prob, traj_batch_adversary.log_prob], axis=1
+                )
+                log_prob_k0_all_reshape = log_prob_k0_all.reshape(
+                    -1, env.num_agents, config["num_envs"]
+                )
+                log_prob_k0_all_joint = jnp.sum(log_prob_k0_all_reshape, axis=1)
+                log_prob_k0_all_joint_agent = jnp.tile(
+                    log_prob_k0_all_joint, (1, env.num_good_agents)
+                )
+                log_prob_k0_all_joint_adversary = jnp.tile(
+                    log_prob_k0_all_joint, (1, env.num_adversaries)
+                )
+
+                batch_agent = (
+                    traj_batch_agent.obs,
+                    traj_batch_agent.action,
+                    traj_batch_agent.log_prob,
+                    traj_batch_agent.value,
+                    advantages_agent.squeeze(),
+                    targets_agent.squeeze(),
+                    log_prob_k0_all_joint_agent,
+                )
+                batch_adversary = (
+                    traj_batch_adversary.obs,
+                    traj_batch_adversary.action,
+                    traj_batch_adversary.log_prob,
+                    traj_batch_adversary.value,
+                    advantages_adversary.squeeze(),
+                    targets_adversary.squeeze(),
+                    log_prob_k0_all_joint_adversary,
+                )
 
                 rng, _rng_permute_agent, _rng_permute_adversary = jax.random.split(
                     rng, 3
@@ -374,155 +398,82 @@ def make_train(config):
                     _rng_permute_adversary, config["num_adversaries"]
                 )
 
-                # batch is in sequence
+                shuffled_batch_agent = jax.tree.map(
+                    lambda x: jnp.take(x, permutation_agent, axis=1), batch_agent
+                )
+                shuffled_batch_adversary = jax.tree.map(
+                    lambda x: jnp.take(x, permutation_adversary, axis=1),
+                    batch_adversary,
+                )
+                shuffled_batch_split_agent = jax.tree.map(
+                    lambda x: jnp.reshape(  # split into minibatches along actor dimension (dim 1)
+                        x,
+                        [x.shape[0], config["num_minibatches"], -1] + list(x.shape[2:]),
+                    ),
+                    shuffled_batch_agent,
+                )
+                shuffled_batch_split_adversary = jax.tree.map(
+                    lambda x: jnp.reshape(  # split into minibatches along actor dimension (dim 1)
+                        x,
+                        [x.shape[0], config["num_minibatches"], -1] + list(x.shape[2:]),
+                    ),
+                    shuffled_batch_adversary,
+                )
+                minibatches_agent = jax.tree.map(  # swap minibatch and time axis,
+                    lambda x: jnp.swapaxes(x, 0, 1),
+                    shuffled_batch_split_agent,
+                )
+                minibatches_adversary = jax.tree.map(  # swap minibatch and time axis,
+                    lambda x: jnp.swapaxes(x, 0, 1),
+                    shuffled_batch_split_adversary,
+                )
+
                 carry = (
                     train_state_agent,
                     train_state_adversary,
-                    obs_agent,
-                    obs_adversary,
-                    value_agent,
-                    value_adversary,
-                    action_agent,
-                    action_adversary,
-                    log_prob_agent_k0,
-                    log_prob_adversary_k0,
-                    advantages_agent,
-                    advantages_adversary,
-                    targets_agent,
-                    targets_adversary,
                     permutation_agent,
                     permutation_adversary,
+                    traj_batch_agent.obs,
+                    traj_batch_adversary.obs,
+                    traj_batch_agent.action,
+                    traj_batch_adversary.action,
                 )
 
-                def _update_minibatch(carry, minibatch_idx):
+                def _update_minibatch(carry, ys):
                     (
                         train_state_agent,
                         train_state_adversary,
-                        obs_agent,
-                        obs_adversary,
-                        value_agent,
-                        value_adversary,
-                        action_agent,
-                        action_adversary,
-                        log_prob_agent_k0,
-                        log_prob_adversary_k0,
-                        advantages_agent,
-                        advantages_adversary,
-                        targets_agent,
-                        targets_adversary,
                         permutation_agent,
                         permutation_adversary,
+                        obs_agent,
+                        obs_adversary,
+                        action_agent,
+                        action_adversary,
                     ) = carry
+                    minibatch_agent, minibatch_adversary, minibatch_idx = ys
+
+                    (
+                        obs_minibatch_agent,
+                        action_minibatch_agent,
+                        log_prob_minibatch_agent,
+                        value_minibatch_agent,
+                        advantages_minibatch_agent,
+                        targets_minibatch_agent,
+                        log_prob_k0_all_joint_minibatch_agent,
+                    ) = minibatch_agent
+
+                    (
+                        obs_minibatch_adversary,
+                        action_minibatch_adversary,
+                        log_prob_minibatch_adversary,
+                        value_minibatch_adversary,
+                        advantages_minibatch_adversary,
+                        targets_minibatch_adversary,
+                        log_prob_k0_all_joint_minibatch_adversary,
+                    ) = minibatch_adversary
 
                     agent_params_k0 = train_state_agent.params
                     adversary_params_k0 = train_state_adversary.params
-
-                    # Get log_prob_k0_joint
-                    log_prob_k0_all = jnp.concatenate(
-                        [log_prob_agent_k0, log_prob_adversary_k0], axis=1
-                    )
-                    log_prob_k0_all_reshape = log_prob_k0_all.reshape(
-                        -1, env.num_agents, config["num_envs"]
-                    )
-                    log_prob_k0_all_joint = jnp.sum(log_prob_k0_all_reshape, axis=1)
-                    log_prob_k0_all_joint_agent = jnp.tile(
-                        log_prob_k0_all_joint, (1, env.num_good_agents)
-                    )
-                    log_prob_k0_all_joint_adversary = jnp.tile(
-                        log_prob_k0_all_joint, (1, env.num_adversaries)
-                    )
-
-                    batch_agent = (
-                        obs_agent,
-                        value_agent,
-                        action_agent,
-                        advantages_agent,
-                        targets_agent,
-                        log_prob_agent_k0,
-                        log_prob_k0_all_joint_agent,
-                    )
-
-                    batch_adversary = (
-                        obs_adversary,
-                        value_adversary,
-                        action_adversary,
-                        advantages_adversary,
-                        targets_adversary,
-                        log_prob_adversary_k0,
-                        log_prob_k0_all_joint_adversary,
-                    )
-
-                    shuffled_batch_agent = jax.tree.map(
-                        lambda x: jnp.take(x, permutation_agent, axis=1), batch_agent
-                    )
-                    shuffled_batch_reshaped_agent = jax.tree.map(
-                        lambda x: jnp.reshape(  # reshapes shuffled batch into separate minibatches by adding a dimension after actor dim
-                            # e.g. advantages_stack (128,320) -> (128,2,160) if NUM_MINIBATCHES = 2
-                            # traj_batch_stack.obs (128,320,127) -> (128,2,160,127)
-                            x,
-                            list(x.shape[0:1])  # time dimension
-                            + [
-                                config["num_minibatches"],
-                                -1,
-                            ]  # minibatch dimension, actor dimension
-                            + list(x.shape[2:]),  # rest of the dimensions
-                        ),
-                        shuffled_batch_agent,
-                    )
-                    minibatches_agent = (
-                        jax.tree.map(  # move minibatch dimension to the front
-                            lambda x: jnp.moveaxis(x, 1, 0),
-                            shuffled_batch_reshaped_agent,
-                        )
-                    )
-
-                    shuffled_batch_adversary = jax.tree.map(
-                        lambda x: jnp.take(x, permutation_adversary, axis=1),
-                        batch_adversary,
-                    )
-                    shuffled_batch_reshaped_adversary = jax.tree.map(
-                        lambda x: jnp.reshape(  # reshapes shuffled batch into separate minibatches by adding a dimension after actor dim
-                            x,
-                            list(x.shape[0:1])  # time dimension
-                            + [
-                                config["num_minibatches"],
-                                -1,
-                            ]  # minibatch dimension, actor dimension
-                            + list(x.shape[2:]),  # rest of the dimensions
-                        ),
-                        shuffled_batch_adversary,
-                    )
-                    minibatches_adversary = (
-                        jax.tree.map(  # move minibatch dimension to the front
-                            lambda x: jnp.moveaxis(x, 1, 0),
-                            shuffled_batch_reshaped_adversary,
-                        )
-                    )
-
-                    minibatch_obs_agent = minibatches_agent[0][minibatch_idx]
-                    minibatch_obs_adversary = minibatches_adversary[0][minibatch_idx]
-                    minibatch_value_agent = minibatches_agent[1][minibatch_idx]
-                    minibatch_value_adversary = minibatches_adversary[1][minibatch_idx]
-                    minibatch_action_agent = minibatches_agent[2][minibatch_idx]
-                    minibatch_action_adversary = minibatches_adversary[2][minibatch_idx]
-                    minibatch_advantages_agent = minibatches_agent[3][minibatch_idx]
-                    minibatch_advantages_adversary = minibatches_adversary[3][
-                        minibatch_idx
-                    ]
-                    minibatch_targets_agent = minibatches_agent[4][minibatch_idx]
-                    minibatch_targets_adversary = minibatches_adversary[4][
-                        minibatch_idx
-                    ]
-                    minibatch_log_prob_agent_k0 = minibatches_agent[5][minibatch_idx]
-                    minibatch_log_prob_adversary_k0 = minibatches_adversary[5][
-                        minibatch_idx
-                    ]
-                    minibatch_log_prob_k0_all_joint_agent = minibatches_agent[6][
-                        minibatch_idx
-                    ]
-                    minibatch_log_prob_k0_all_joint_adversary = minibatches_adversary[
-                        6
-                    ][minibatch_idx]
 
                     def _loss_fn_k1(
                         params,
@@ -596,23 +547,23 @@ def make_train(config):
                     (loss_agent_k1, loss_info_agent_k1), grads_agent_k1 = grad_fn_k1(
                         agent_params_k0,
                         network_agent,
-                        minibatch_obs_agent,
-                        minibatch_action_agent,
-                        minibatch_advantages_agent,
-                        minibatch_value_agent,
-                        minibatch_targets_agent,
-                        minibatch_log_prob_agent_k0,
+                        obs_minibatch_agent,
+                        action_minibatch_agent,
+                        advantages_minibatch_agent,
+                        value_minibatch_agent,
+                        targets_minibatch_agent,
+                        log_prob_minibatch_agent,
                     )
                     (loss_adversary_k1, loss_info_adversary_k1), grads_adversary_k1 = (
                         grad_fn_k1(
                             adversary_params_k0,
                             network_adversary,
-                            minibatch_obs_adversary,
-                            minibatch_action_adversary,
-                            minibatch_advantages_adversary,
-                            minibatch_value_adversary,
-                            minibatch_targets_adversary,
-                            minibatch_log_prob_adversary_k0,
+                            obs_minibatch_adversary,
+                            action_minibatch_adversary,
+                            advantages_minibatch_adversary,
+                            value_minibatch_adversary,
+                            targets_minibatch_adversary,
+                            log_prob_minibatch_adversary,
                         )
                     )
                     updated_train_state_agent = train_state_agent.apply_gradients(
@@ -702,14 +653,14 @@ def make_train(config):
                         )
                     )
 
-                    minibatch_log_prob_k1_agent = minibatches_agent_k2[0][minibatch_idx]
-                    minibatch_log_prob_k1_all_joint_agent = minibatches_agent_k2[1][
+                    log_prob_k1_minibatch_agent = minibatches_agent_k2[0][minibatch_idx]
+                    log_prob_k1_all_joint_minibatch_agent = minibatches_agent_k2[1][
                         minibatch_idx
                     ]
-                    minibatch_log_prob_k1_adversary = minibatches_adversary_k2[0][
+                    log_prob_k1_minibatch_adversary = minibatches_adversary_k2[0][
                         minibatch_idx
                     ]
-                    minibatch_log_prob_k1_all_joint_adversary = (
+                    log_prob_k1_all_joint_minibatch_adversary = (
                         minibatches_adversary_k2[1][minibatch_idx]
                     )
 
@@ -794,27 +745,27 @@ def make_train(config):
                     (loss_agent_k2, loss_info_agent_k2), grads_agent_k2 = grad_fn_k2(
                         agent_params_k0,
                         network_agent,
-                        minibatch_obs_agent,
-                        minibatch_action_agent,
-                        minibatch_advantages_agent,
-                        minibatch_value_agent,
-                        minibatch_targets_agent,
-                        minibatch_log_prob_k0_all_joint_agent,
-                        minibatch_log_prob_k1_agent,
-                        minibatch_log_prob_k1_all_joint_agent,
+                        obs_minibatch_agent,
+                        action_minibatch_agent,
+                        advantages_minibatch_agent,
+                        value_minibatch_agent,
+                        targets_minibatch_agent,
+                        log_prob_k0_all_joint_minibatch_agent,
+                        log_prob_k1_minibatch_agent,
+                        log_prob_k1_all_joint_minibatch_agent,
                     )
                     (loss_adversary_k2, loss_info_adversary_k2), grads_adversary_k2 = (
                         grad_fn_k2(
                             adversary_params_k0,
                             network_adversary,
-                            minibatch_obs_adversary,
-                            minibatch_action_adversary,
-                            minibatch_advantages_adversary,
-                            minibatch_value_adversary,
-                            minibatch_targets_adversary,
-                            minibatch_log_prob_k0_all_joint_adversary,
-                            minibatch_log_prob_k1_adversary,
-                            minibatch_log_prob_k1_all_joint_adversary,
+                            obs_minibatch_adversary,
+                            action_minibatch_adversary,
+                            advantages_minibatch_adversary,
+                            value_minibatch_adversary,
+                            targets_minibatch_adversary,
+                            log_prob_k0_all_joint_minibatch_adversary,
+                            log_prob_k1_minibatch_adversary,
+                            log_prob_k1_all_joint_minibatch_adversary,
                         )
                     )
                     updated_train_state_agent = train_state_agent.apply_gradients(
@@ -838,46 +789,30 @@ def make_train(config):
                     loss_info_k2 = {**loss_info_agent_k2, **loss_info_adversary_k2}
                     loss_info_k2["total_loss"] = total_loss_k2
 
-                    return (
+                    carry = (
                         updated_train_state_agent,
                         updated_train_state_adversary,
-                        obs_agent,
-                        obs_adversary,
-                        value_agent,
-                        value_adversary,
-                        action_agent,
-                        action_adversary,
-                        log_prob_agent_k0,
-                        log_prob_adversary_k0,
-                        advantages_agent,
-                        advantages_adversary,
-                        targets_agent,
-                        targets_adversary,
                         permutation_agent,
                         permutation_adversary,
-                    ), (loss_info_k1, loss_info_k2)
+                        obs_agent,
+                        obs_adversary,
+                        action_agent,
+                        action_adversary,
+                    )
+                    return carry, (loss_info_k1, loss_info_k2)
 
-                (
-                    final_train_state_agent,
-                    final_train_state_adversary,
-                    obs_agent,
-                    obs_adversary,
-                    value_agent,
-                    value_adversary,
-                    action_agent,
-                    action_adversary,
-                    log_prob_agent_k0,
-                    log_prob_adversary_k0,
-                    advantages_agent,
-                    advantages_adversary,
-                    targets_agent,
-                    targets_adversary,
-                    permutation_agent,
-                    permutation_adversary,
-                ), (loss_info_k1, loss_info_k2) = jax.lax.scan(
+                carry_out, (loss_info_k1, loss_info_k2) = jax.lax.scan(
                     _update_minibatch,
                     carry,
-                    jnp.arange(config["num_minibatches"]),
+                    (
+                        minibatches_agent,
+                        minibatches_adversary,
+                        jnp.arange(config["num_minibatches"]),
+                    ),
+                )
+                final_train_state_agent, final_train_state_adversary = (
+                    carry_out[0],
+                    carry_out[1],
                 )
                 update_state = Updatestate(
                     train_state_agent=final_train_state_agent,

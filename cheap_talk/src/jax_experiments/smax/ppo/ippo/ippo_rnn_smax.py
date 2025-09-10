@@ -16,7 +16,7 @@ from omegaconf import DictConfig, OmegaConf
 import datetime
 from jaxmarl.wrappers.baselines import SMAXLogWrapper
 from jaxmarl.environments.smax import map_name_to_scenario, HeuristicEnemySMAX
-from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
+from cheap_talk.src.utils.wandb_process import WandbMultiLogger
 import wandb
 import functools
 
