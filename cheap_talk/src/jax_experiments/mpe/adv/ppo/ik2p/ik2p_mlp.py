@@ -642,13 +642,13 @@ def make_train(config):
                     )
                     minibatches_agent_k2 = (
                         jax.tree.map(  # move minibatch dimension to the front
-                            lambda x: jnp.moveaxis(x, 1, 0),
+                            lambda x: jnp.swapaxes(x, 1, 0),
                             shuffled_batch_reshaped_agent_k2,
                         )
                     )
                     minibatches_adversary_k2 = (
                         jax.tree.map(  # move minibatch dimension to the front
-                            lambda x: jnp.moveaxis(x, 1, 0),
+                            lambda x: jnp.swapaxes(x, 1, 0),
                             shuffled_batch_reshaped_adversary_k2,
                         )
                     )
