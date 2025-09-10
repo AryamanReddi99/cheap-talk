@@ -368,10 +368,10 @@ def make_train(config):
                     rng, 3
                 )
                 permutation_agent = jax.random.permutation(
-                    _rng_permute_agent, config["num_envs"]
+                    _rng_permute_agent, config["num_agents"]
                 )
                 permutation_adversary = jax.random.permutation(
-                    _rng_permute_adversary, config["num_envs"]
+                    _rng_permute_adversary, config["num_adversaries"]
                 )
 
                 # batch is in sequence
@@ -415,9 +415,7 @@ def make_train(config):
                     ) = carry
 
                     agent_params_k0 = train_state_agent.params
-                    agent_opt_state_k0 = train_state_agent.opt_state
                     adversary_params_k0 = train_state_adversary.params
-                    adversary_opt_state_k0 = train_state_adversary.opt_state
 
                     # Get log_prob_k0_joint
                     log_prob_k0_all = jnp.concatenate(
@@ -713,16 +711,6 @@ def make_train(config):
                     ]
                     minibatch_log_prob_k1_all_joint_adversary = (
                         minibatches_adversary_k2[1][minibatch_idx]
-                    )
-
-                    # reset networks
-                    train_state_agent = train_state_agent.replace(
-                        params=agent_params_k0,
-                        opt_state=agent_opt_state_k0,
-                    )
-                    train_state_adversary = train_state_adversary.replace(
-                        params=adversary_params_k0,
-                        opt_state=adversary_opt_state_k0,
                     )
 
                     def _loss_fn_k2(
