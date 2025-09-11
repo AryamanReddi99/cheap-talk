@@ -416,18 +416,18 @@ def make_train(config):
                     ) = carry
                     minibatch_agent, minibatch_adversary = minibatch
                     (
-                        obs_agent,
-                        action_agent,
-                        log_prob_agent,
-                        value_agent,
+                        obs_minibatch_agent,
+                        action_minibatch_agent,
+                        log_prob_minibatch_agent,
+                        value_minibatch_agent,
                         advantages_minibatch_agent,
                         targets_minibatch_agent,
                     ) = minibatch_agent
                     (
-                        obs_adversary,
-                        action_adversary,
-                        log_prob_adversary,
-                        value_adversary,
+                        obs_minibatch_adversary,
+                        action_minibatch_adversary,
+                        log_prob_minibatch_adversary,
+                        value_minibatch_adversary,
                         advantages_minibatch_adversary,
                         targets_minibatch_adversary,
                     ) = minibatch_adversary
@@ -452,17 +452,17 @@ def make_train(config):
                         # actor loss
                         logratio = log_prob - log_prob_minibatch
                         ratio = jnp.exp(logratio)
-                        gae_minibatch_normalized = (
-                            gae_minibatch - gae_minibatch.mean()
-                        ) / (gae_minibatch.std() + 1e-8)
-                        loss_actor_1 = ratio * gae_minibatch_normalized
+                        gae_normalized = (gae_minibatch - gae_minibatch.mean()) / (
+                            gae_minibatch.std() + 1e-8
+                        )
+                        loss_actor_1 = ratio * gae_normalized
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio,
                                 1.0 - config["clip_eps"],
                                 1.0 + config["clip_eps"],
                             )
-                            * gae_minibatch_normalized
+                            * gae_normalized
                         )
                         loss_actor = -jnp.minimum(loss_actor_1, loss_actor_2).mean()
                         entropy = pi.entropy().mean()
@@ -508,20 +508,20 @@ def make_train(config):
                     (loss_agent, loss_info_agent), grads_agent = grad_fn(
                         train_state_agent.params,
                         network_agent,
-                        obs_agent,
-                        action_agent,
-                        log_prob_agent,
-                        value_agent,
+                        obs_minibatch_agent,
+                        action_minibatch_agent,
+                        log_prob_minibatch_agent,
+                        value_minibatch_agent,
                         advantages_minibatch_agent,
                         targets_minibatch_agent,
                     )
                     (loss_adversary, loss_info_adversary), grads_adversary = grad_fn(
                         train_state_adversary.params,
                         network_adversary,
-                        obs_adversary,
-                        action_adversary,
-                        log_prob_adversary,
-                        value_adversary,
+                        obs_minibatch_adversary,
+                        action_minibatch_adversary,
+                        log_prob_minibatch_adversary,
+                        value_minibatch_adversary,
                         advantages_minibatch_adversary,
                         targets_minibatch_adversary,
                     )
@@ -541,7 +541,6 @@ def make_train(config):
                     loss_info_adversary = {
                         k + "_adversary": v for k, v in loss_info_adversary.items()
                     }
-
                     loss_info = {**loss_info_agent, **loss_info_adversary}
                     loss_info["total_loss"] = total_loss
 

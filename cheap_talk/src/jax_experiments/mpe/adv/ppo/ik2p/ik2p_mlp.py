@@ -354,6 +354,16 @@ def make_train(config):
                 targets_adversary = update_state.targets_adversary
                 rng = update_state.rng
 
+                rng, _rng_permute_agent, _rng_permute_adversary = jax.random.split(
+                    rng, 3
+                )
+                permutation_agent = jax.random.permutation(
+                    _rng_permute_agent, config["num_agents"]
+                )
+                permutation_adversary = jax.random.permutation(
+                    _rng_permute_adversary, config["num_adversaries"]
+                )
+
                 # Get log_prob_k0_joint
                 log_prob_k0_all = jnp.concatenate(
                     [traj_batch_agent.log_prob, traj_batch_adversary.log_prob], axis=1
@@ -386,16 +396,6 @@ def make_train(config):
                     advantages_adversary.squeeze(),
                     targets_adversary.squeeze(),
                     log_prob_k0_all_joint_adversary,
-                )
-
-                rng, _rng_permute_agent, _rng_permute_adversary = jax.random.split(
-                    rng, 3
-                )
-                permutation_agent = jax.random.permutation(
-                    _rng_permute_agent, config["num_agents"]
-                )
-                permutation_adversary = jax.random.permutation(
-                    _rng_permute_adversary, config["num_adversaries"]
                 )
 
                 shuffled_batch_agent = jax.tree.map(
@@ -472,48 +472,49 @@ def make_train(config):
                         log_prob_k0_all_joint_minibatch_adversary,
                     ) = minibatch_adversary
 
-                    agent_params_k0 = train_state_agent.params
-                    adversary_params_k0 = train_state_adversary.params
-
                     def _loss_fn_k1(
                         params,
                         network,
-                        obs,
-                        action,
-                        gae,
-                        value_old,
-                        targets,
-                        log_prob_k0,
+                        obs_minibatch,
+                        action_minibatch,
+                        log_prob_minibatch,
+                        value_minibatch,
+                        gae_minibatch,
+                        targets_minibatch,
                     ):
                         # RERUN NETWORK
                         pi, value = network.apply(
                             params,
-                            obs,
+                            obs_minibatch,
                         )
-                        log_prob = pi.log_prob(action)
+                        log_prob = pi.log_prob(action_minibatch)
 
                         # actor loss
-                        logratio = log_prob - log_prob_k0
+                        logratio = log_prob - log_prob_minibatch
                         ratio = jnp.exp(logratio)
-                        gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                        loss_actor_1 = ratio * gae
+                        gae_normalized = (gae_minibatch - gae_minibatch.mean()) / (
+                            gae_minibatch.std() + 1e-8
+                        )
+                        loss_actor_1 = ratio * gae_normalized
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio,
                                 1.0 - config["clip_eps"],
                                 1.0 + config["clip_eps"],
                             )
-                            * gae
+                            * gae_normalized
                         )
                         loss_actor = -jnp.minimum(loss_actor_1, loss_actor_2).mean()
                         entropy = pi.entropy().mean()
 
                         # critic loss
-                        value_pred_clipped = value_old + (value - value_old).clip(
-                            -config["clip_eps"], config["clip_eps"]
+                        value_pred_clipped = value_minibatch + (
+                            value - value_minibatch
+                        ).clip(-config["clip_eps"], config["clip_eps"])
+                        value_loss = jnp.square(value - targets_minibatch)
+                        value_loss_clipped = jnp.square(
+                            value_pred_clipped - targets_minibatch
                         )
-                        value_loss = jnp.square(value - targets)
-                        value_loss_clipped = jnp.square(value_pred_clipped - targets)
                         value_loss = (
                             0.5 * jnp.maximum(value_loss, value_loss_clipped).mean()
                         )
@@ -538,32 +539,32 @@ def make_train(config):
                             "approx_kl_backward": approx_kl_backward,
                             "approx_kl_forward": approx_kl_forward,
                             "clip_frac": clip_frac,
-                            "gae_mean": gae.mean(),
-                            "gae_std": gae.std(),
-                            "gae_max": gae.max(),
+                            "gae_mean": gae_minibatch.mean(),
+                            "gae_std": gae_minibatch.std(),
+                            "gae_max": gae_minibatch.max(),
                         }
 
                     grad_fn_k1 = jax.value_and_grad(_loss_fn_k1, has_aux=True)
                     (loss_agent_k1, loss_info_agent_k1), grads_agent_k1 = grad_fn_k1(
-                        agent_params_k0,
+                        train_state_agent.params,
                         network_agent,
                         obs_minibatch_agent,
                         action_minibatch_agent,
-                        advantages_minibatch_agent,
-                        value_minibatch_agent,
-                        targets_minibatch_agent,
                         log_prob_minibatch_agent,
+                        value_minibatch_agent,
+                        advantages_minibatch_agent,
+                        targets_minibatch_agent,
                     )
                     (loss_adversary_k1, loss_info_adversary_k1), grads_adversary_k1 = (
                         grad_fn_k1(
-                            adversary_params_k0,
+                            train_state_adversary.params,
                             network_adversary,
                             obs_minibatch_adversary,
                             action_minibatch_adversary,
-                            advantages_minibatch_adversary,
-                            value_minibatch_adversary,
-                            targets_minibatch_adversary,
                             log_prob_minibatch_adversary,
+                            value_minibatch_adversary,
+                            advantages_minibatch_adversary,
+                            targets_minibatch_adversary,
                         )
                     )
                     updated_train_state_agent = train_state_agent.apply_gradients(
@@ -667,49 +668,54 @@ def make_train(config):
                     def _loss_fn_k2(
                         params,
                         network,
-                        obs,
-                        action,
-                        gae,
-                        value_old,
-                        targets,
-                        log_prob_k0_joint,
-                        log_prob_k1,
-                        log_prob_k1_joint,
+                        obs_minibatch,
+                        action_minibatch,
+                        log_prob_minibatch,
+                        value_minibatch,
+                        gae_minibatch,
+                        targets_minibatch,
+                        log_prob_k0_all_joint_minibatch,
+                        log_prob_k1_minibatch,
+                        log_prob_k1_all_joint_minibatch,
                     ):
                         # RERUN NETWORK
                         pi, value = network.apply(
                             params,
-                            obs,
+                            obs_minibatch,
                         )
-                        log_prob = pi.log_prob(action)
+                        log_prob = pi.log_prob(action_minibatch)
 
                         # actor loss
                         logratio_is = (
                             log_prob
-                            + log_prob_k1_joint
-                            - log_prob_k0_joint
-                            - log_prob_k1
+                            + log_prob_k1_all_joint_minibatch
+                            - log_prob_k0_all_joint_minibatch
+                            - log_prob_k1_minibatch
                         )
                         ratio_is = jnp.exp(logratio_is)
-                        gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                        loss_actor_1 = ratio_is * gae
+                        gae_normalized = (gae_minibatch - gae_minibatch.mean()) / (
+                            gae_minibatch.std() + 1e-8
+                        )
+                        loss_actor_1 = ratio_is * gae_normalized
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio_is,
                                 1.0 - config["clip_eps"],
                                 1.0 + config["clip_eps"],
                             )
-                            * gae
+                            * gae_normalized
                         )
                         loss_actor = -jnp.minimum(loss_actor_1, loss_actor_2).mean()
                         entropy = pi.entropy().mean()
 
                         # critic loss
-                        value_pred_clipped = value_old + (value - value_old).clip(
-                            -config["clip_eps"], config["clip_eps"]
+                        value_pred_clipped = value_minibatch + (
+                            value - value_minibatch
+                        ).clip(-config["clip_eps"], config["clip_eps"])
+                        value_loss = jnp.square(value - targets_minibatch)
+                        value_loss_clipped = jnp.square(
+                            value_pred_clipped - targets_minibatch
                         )
-                        value_loss = jnp.square(value - targets)
-                        value_loss_clipped = jnp.square(value_pred_clipped - targets)
                         value_loss = (
                             0.5 * jnp.maximum(value_loss, value_loss_clipped).mean()
                         )
@@ -736,19 +742,20 @@ def make_train(config):
                             "approx_kl_backward": approx_kl_backward,
                             "approx_kl_forward": approx_kl_forward,
                             "clip_frac": clip_frac,
-                            "gae_mean": gae.mean(),
-                            "gae_std": gae.std(),
-                            "gae_max": gae.max(),
+                            "gae_mean": gae_minibatch.mean(),
+                            "gae_std": gae_minibatch.std(),
+                            "gae_max": gae_minibatch.max(),
                         }
 
                     grad_fn_k2 = jax.value_and_grad(_loss_fn_k2, has_aux=True)
                     (loss_agent_k2, loss_info_agent_k2), grads_agent_k2 = grad_fn_k2(
-                        agent_params_k0,
+                        train_state_agent.params,
                         network_agent,
                         obs_minibatch_agent,
                         action_minibatch_agent,
-                        advantages_minibatch_agent,
+                        log_prob_minibatch_agent,
                         value_minibatch_agent,
+                        advantages_minibatch_agent,
                         targets_minibatch_agent,
                         log_prob_k0_all_joint_minibatch_agent,
                         log_prob_k1_minibatch_agent,
@@ -756,12 +763,13 @@ def make_train(config):
                     )
                     (loss_adversary_k2, loss_info_adversary_k2), grads_adversary_k2 = (
                         grad_fn_k2(
-                            adversary_params_k0,
+                            train_state_adversary.params,
                             network_adversary,
                             obs_minibatch_adversary,
                             action_minibatch_adversary,
-                            advantages_minibatch_adversary,
+                            log_prob_minibatch_adversary,
                             value_minibatch_adversary,
+                            advantages_minibatch_adversary,
                             targets_minibatch_adversary,
                             log_prob_k0_all_joint_minibatch_adversary,
                             log_prob_k1_minibatch_adversary,
