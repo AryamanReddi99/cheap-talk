@@ -7,8 +7,10 @@
 "num_minibatches": 2
 "gamma": 0.99
 "gae_lambda": 1.0
-"clip_eps": 0.3
-"scale_clip_eps": False
+"clip_eps_k1": 0.3
+"clip_eps_k2": 0.3
+"clip_eps_critic": 0.3
+"scale_clip_eps": True
 "ent_coef": 0.01
 "vf_coef": 1.0
 "max_grad_norm": 0.5
@@ -23,7 +25,7 @@ env_kwargs: {"num_good_agents": 1, "num_adversaries": 10, "num_obs": 2}
 
 # WandB Params
 project: "mpe"
-job_type: ik2p_10agents_reverse_IS
+job_type: ik2p_10agents_scale_eps
 use_timestamp: True
 wandb_mode: True
 log_network_stats: False

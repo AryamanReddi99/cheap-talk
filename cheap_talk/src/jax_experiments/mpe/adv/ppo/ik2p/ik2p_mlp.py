@@ -86,10 +86,10 @@ def make_train(config):
     config["minibatch_size"] = (
         config["num_actors"] * config["num_steps"] // config["num_minibatches"]
     )
-    config["clip_eps"] = (
-        config["clip_eps"] / env.num_agents
+    config["clip_eps_k1"] = (
+        config["clip_eps_k1"] / env.num_agents
         if config["scale_clip_eps"]
-        else config["clip_eps"]
+        else config["clip_eps_k1"]
     )
 
     def linear_schedule(count):
@@ -499,8 +499,8 @@ def make_train(config):
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio,
-                                1.0 - config["clip_eps"],
-                                1.0 + config["clip_eps"],
+                                1.0 - config["clip_eps_k1"],
+                                1.0 + config["clip_eps_k1"],
                             )
                             * gae_normalized
                         )
@@ -510,7 +510,7 @@ def make_train(config):
                         # critic loss
                         value_pred_clipped = value_minibatch + (
                             value - value_minibatch
-                        ).clip(-config["clip_eps"], config["clip_eps"])
+                        ).clip(-config["clip_eps_critic"], config["clip_eps_critic"])
                         value_loss = jnp.square(value - targets_minibatch)
                         value_loss_clipped = jnp.square(
                             value_pred_clipped - targets_minibatch
@@ -522,7 +522,7 @@ def make_train(config):
                         # stats
                         approx_kl_backward = ((ratio - 1) - logratio).mean()
                         approx_kl_forward = (ratio * logratio - (ratio - 1)).mean()
-                        clip_frac = jnp.mean(jnp.abs(ratio - 1) > config["clip_eps"])
+                        clip_frac = jnp.mean(jnp.abs(ratio - 1) > config["clip_eps_k1"])
 
                         total_loss = (
                             loss_actor
@@ -578,6 +578,29 @@ def make_train(config):
                     loss_info_adversary_k1["grad_norm"] = pytree_norm(
                         grads_adversary_k1
                     )
+
+                    # new ratios
+                    pi_new_agent, _ = network_agent.apply(
+                        updated_train_state_agent.params,
+                        obs_minibatch_agent,
+                    )
+                    log_prob_new_agent = pi_new_agent.log_prob(action_minibatch_agent)
+                    ratio_new_agent_k1 = jnp.exp(
+                        log_prob_new_agent - log_prob_minibatch_agent
+                    )
+                    loss_info_agent_k1["ratio_new"] = ratio_new_agent_k1
+                    pi_new_adversary, _ = network_adversary.apply(
+                        updated_train_state_adversary.params,
+                        obs_minibatch_adversary,
+                    )
+                    log_prob_new_adversary = pi_new_adversary.log_prob(
+                        action_minibatch_adversary
+                    )
+                    ratio_new_adversary_k1 = jnp.exp(
+                        log_prob_new_adversary - log_prob_minibatch_adversary
+                    )
+                    loss_info_adversary_k1["ratio_new"] = ratio_new_adversary_k1
+
                     loss_info_agent_k1 = {
                         k + "_agent_k1": v for k, v in loss_info_agent_k1.items()
                     }
@@ -700,8 +723,8 @@ def make_train(config):
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio_is,
-                                1.0 - config["clip_eps"],
-                                1.0 + config["clip_eps"],
+                                1.0 - config["clip_eps_k2"],
+                                1.0 + config["clip_eps_k2"],
                             )
                             * gae_normalized
                         )
@@ -711,7 +734,7 @@ def make_train(config):
                         # critic loss
                         value_pred_clipped = value_minibatch + (
                             value - value_minibatch
-                        ).clip(-config["clip_eps"], config["clip_eps"])
+                        ).clip(-config["clip_eps_critic"], config["clip_eps_critic"])
                         value_loss = jnp.square(value - targets_minibatch)
                         value_loss_clipped = jnp.square(
                             value_pred_clipped - targets_minibatch
@@ -725,7 +748,17 @@ def make_train(config):
                         approx_kl_forward = (
                             ratio_is * logratio_is - (ratio_is - 1)
                         ).mean()
-                        clip_frac = jnp.mean(jnp.abs(ratio_is - 1) > config["clip_eps"])
+                        clip_frac = jnp.mean(
+                            jnp.abs(ratio_is - 1) > config["clip_eps_k2"]
+                        )
+                        k2_ratio = jnp.exp(
+                            (
+                                log_prob_k1_all_joint_minibatch
+                                + log_prob_minibatch
+                                - log_prob_k0_all_joint_minibatch
+                                - log_prob_k1_minibatch
+                            ).mean()
+                        )
 
                         total_loss = (
                             loss_actor
@@ -745,6 +778,7 @@ def make_train(config):
                             "gae_mean": gae_minibatch.mean(),
                             "gae_std": gae_minibatch.std(),
                             "gae_max": gae_minibatch.max(),
+                            "k2_ratio": k2_ratio,
                         }
 
                     grad_fn_k2 = jax.value_and_grad(_loss_fn_k2, has_aux=True)
@@ -787,6 +821,29 @@ def make_train(config):
                     loss_info_adversary_k2["grad_norm"] = pytree_norm(
                         grads_adversary_k2
                     )
+
+                    # new ratios
+                    pi_new_agent, _ = network_agent.apply(
+                        updated_train_state_agent.params,
+                        obs_minibatch_agent,
+                    )
+                    log_prob_new_agent = pi_new_agent.log_prob(action_minibatch_agent)
+                    ratio_new_agent_k2 = jnp.exp(
+                        log_prob_new_agent - log_prob_minibatch_agent
+                    )
+                    loss_info_agent_k2["ratio_new"] = ratio_new_agent_k2
+                    pi_new_adversary, _ = network_adversary.apply(
+                        updated_train_state_adversary.params,
+                        obs_minibatch_adversary,
+                    )
+                    log_prob_new_adversary = pi_new_adversary.log_prob(
+                        action_minibatch_adversary
+                    )
+                    ratio_new_adversary_k2 = jnp.exp(
+                        log_prob_new_adversary - log_prob_minibatch_adversary
+                    )
+                    loss_info_adversary_k2["ratio_new"] = ratio_new_adversary_k2
+
                     loss_info_agent_k2 = {
                         k + "_agent_k2": v for k, v in loss_info_agent_k2.items()
                     }
