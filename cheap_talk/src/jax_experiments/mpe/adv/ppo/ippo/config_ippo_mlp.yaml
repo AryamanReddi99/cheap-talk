@@ -19,11 +19,11 @@
 env_name: "MPE_simple_tag_v3"
 seed: 0
 num_seeds: 5
-env_kwargs: {"num_good_agents": 1, "num_adversaries": 10, "num_obs": 2}
+env_kwargs: {"num_good_agents": 1, "num_adversaries": 3, "num_obs": 2}
 
 # WandB Params
 project: "mpe"
-job_type: ippo_10agents
+job_type: ippo
 use_timestamp: True
 wandb_mode: True
 log_network_stats: False
