@@ -503,7 +503,6 @@ def make_train(config):
                             "gae_std": gae_minibatch.std(),
                             "gae_max": gae_minibatch.max(),
                             "gae_norm_mean": gae_normalized.mean(),
-                            "gae_norm_std": gae_normalized.std(),
                             "gae_norm_max": gae_normalized.max(),
                         }
 
