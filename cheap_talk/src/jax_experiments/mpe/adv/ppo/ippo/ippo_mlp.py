@@ -17,7 +17,7 @@ import jaxmarl
 from jaxmarl.wrappers.baselines import MPELogWrapper
 from cheap_talk.src.utils.wandb_process import WandbMultiLogger
 from cheap_talk.src.networks.mlp import ActorCriticDiscreteMLP
-from cheap_talk.src.utils.jax_utils import pytree_norm
+from cheap_talk.src.utils.jax_utils import pytree_norm, pytree_diff_norm
 
 
 class Transition(NamedTuple):
@@ -537,12 +537,12 @@ def make_train(config):
                     total_loss = loss_agent + loss_adversary
                     loss_info_agent["grad_norm"] = pytree_norm(grads_agent)
                     loss_info_adversary["grad_norm"] = pytree_norm(grads_adversary)
-                    loss_info_agent["distance"] = pytree_norm(
-                        updated_train_state_agent.params - train_state_agent.params
+                    loss_info_agent["distance"] = pytree_diff_norm(
+                        updated_train_state_agent.params, train_state_agent.params
                     )
-                    loss_info_adversary["distance"] = pytree_norm(
-                        updated_train_state_adversary.params
-                        - train_state_adversary.params
+                    loss_info_adversary["distance"] = pytree_diff_norm(
+                        updated_train_state_adversary.params,
+                        train_state_adversary.params,
                     )
 
                     loss_info_agent = {

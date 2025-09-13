@@ -17,7 +17,7 @@ import jaxmarl
 from jaxmarl.wrappers.baselines import MPELogWrapper
 from cheap_talk.src.utils.wandb_process import WandbMultiLogger
 from cheap_talk.src.networks.mlp import ActorCriticDiscreteMLP
-from cheap_talk.src.utils.jax_utils import pytree_norm
+from cheap_talk.src.utils.jax_utils import pytree_norm, pytree_diff_norm
 
 
 class Transition(NamedTuple):
@@ -591,12 +591,12 @@ def make_train(config):
                     loss_info_adversary_k1["grad_norm"] = pytree_norm(
                         grads_adversary_k1
                     )
-                    loss_info_agent_k1["distance"] = pytree_norm(
-                        updated_train_state_agent.params - train_state_agent.params
+                    loss_info_agent_k1["distance"] = pytree_diff_norm(
+                        updated_train_state_agent.params, train_state_agent.params
                     )
-                    loss_info_adversary_k1["distance"] = pytree_norm(
-                        updated_train_state_adversary.params
-                        - train_state_adversary.params
+                    loss_info_adversary_k1["distance"] = pytree_diff_norm(
+                        updated_train_state_adversary.params,
+                        train_state_adversary.params,
                     )
 
                     # new ratios
@@ -850,12 +850,12 @@ def make_train(config):
                     loss_info_adversary_k2["grad_norm"] = pytree_norm(
                         grads_adversary_k2
                     )
-                    loss_info_agent_k2["distance"] = pytree_norm(
-                        updated_train_state_agent.params - train_state_agent.params
+                    loss_info_agent_k2["distance"] = pytree_diff_norm(
+                        updated_train_state_agent.params, train_state_agent.params
                     )
-                    loss_info_adversary_k2["distance"] = pytree_norm(
-                        updated_train_state_adversary.params
-                        - train_state_adversary.params
+                    loss_info_adversary_k2["distance"] = pytree_diff_norm(
+                        updated_train_state_adversary.params,
+                        train_state_adversary.params,
                     )
 
                     # new ratios
