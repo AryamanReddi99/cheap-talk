@@ -554,6 +554,7 @@ def make_train(config):
                             "gae_max": gae_minibatch.max(),
                             "gae_norm_mean": gae_normalized.mean(),
                             "gae_norm_max": gae_normalized.max(),
+                            "gae_norm_neg": (gae_normalized < 0).mean(),
                         }
 
                     grad_fn_k1 = jax.value_and_grad(_loss_fn_k1, has_aux=True)
@@ -805,6 +806,7 @@ def make_train(config):
                             "gae_max": gae_minibatch.max(),
                             "gae_norm_mean": gae_normalized.mean(),
                             "gae_norm_max": gae_normalized.max(),
+                            "gae_norm_neg": (gae_normalized < 0).mean(),
                             "k2_ratio": k2_ratio,
                         }
 
