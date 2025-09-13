@@ -2,7 +2,7 @@
 "num_envs": 16 
 "num_steps": 128 
 "lr": 5e-4
-"anneal_lr": True
+"anneal_lr": False
 "update_epochs": 5
 "num_minibatches": 2
 "gamma": 0.99
@@ -25,7 +25,7 @@ env_kwargs: {"num_good_agents": 1, "num_adversaries": 3, "num_obs": 2}
 
 # WandB Params
 project: "mpe"
-job_type: ik2p
+job_type: ik2p_constlr
 use_timestamp: True
 wandb_mode: True
 log_network_stats: False
