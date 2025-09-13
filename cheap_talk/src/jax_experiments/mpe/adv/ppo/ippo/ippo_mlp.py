@@ -545,6 +545,28 @@ def make_train(config):
                         train_state_adversary.params,
                     )
 
+                    # new ratios
+                    pi_new_agent, _ = network_agent.apply(
+                        updated_train_state_agent.params,
+                        obs_minibatch_agent,
+                    )
+                    log_prob_new_agent = pi_new_agent.log_prob(action_minibatch_agent)
+                    ratio_new_agent = jnp.exp(
+                        log_prob_new_agent - log_prob_minibatch_agent
+                    )
+                    loss_info_agent["ratio_new"] = ratio_new_agent
+                    pi_new_adversary, _ = network_adversary.apply(
+                        updated_train_state_adversary.params,
+                        obs_minibatch_adversary,
+                    )
+                    log_prob_new_adversary = pi_new_adversary.log_prob(
+                        action_minibatch_adversary
+                    )
+                    ratio_new_adversary = jnp.exp(
+                        log_prob_new_adversary - log_prob_minibatch_adversary
+                    )
+                    loss_info_adversary["ratio_new"] = ratio_new_adversary
+
                     loss_info_agent = {
                         k + "_agent": v for k, v in loss_info_agent.items()
                     }
