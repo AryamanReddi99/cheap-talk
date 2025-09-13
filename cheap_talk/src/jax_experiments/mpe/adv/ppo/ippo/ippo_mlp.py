@@ -433,6 +433,7 @@ def make_train(config):
                     ) = minibatch_adversary
 
                     def _loss_fn_agent(
+                        agent_params,
                         obs_minibatch,
                         action_minibatch,
                         log_prob_minibatch,
@@ -442,7 +443,7 @@ def make_train(config):
                     ):
                         # RERUN NETWORK
                         pi, value = network_agent.apply(
-                            train_state_agent.params,
+                            agent_params,
                             obs_minibatch,
                         )
                         log_prob = pi.log_prob(action_minibatch)
@@ -506,6 +507,7 @@ def make_train(config):
                         }
 
                     def _loss_fn_adversary(
+                        adversary_params,
                         obs_minibatch,
                         action_minibatch,
                         log_prob_minibatch,
@@ -515,7 +517,7 @@ def make_train(config):
                     ):
                         # RERUN NETWORK
                         pi, value = network_adversary.apply(
-                            train_state_adversary.params,
+                            adversary_params,
                             obs_minibatch,
                         )
                         log_prob = pi.log_prob(action_minibatch)
@@ -580,6 +582,7 @@ def make_train(config):
 
                     grad_fn_agent = jax.value_and_grad(_loss_fn_agent, has_aux=True)
                     (loss_agent, loss_info_agent), grads_agent = grad_fn_agent(
+                        train_state_agent.params,
                         obs_minibatch_agent,
                         action_minibatch_agent,
                         log_prob_minibatch_agent,
@@ -592,6 +595,7 @@ def make_train(config):
                     )
                     (loss_adversary, loss_info_adversary), grads_adversary = (
                         grad_fn_adversay(
+                            train_state_adversary.params,
                             obs_minibatch_adversary,
                             action_minibatch_adversary,
                             log_prob_minibatch_adversary,
