@@ -502,6 +502,9 @@ def make_train(config):
                             "gae_mean": gae_minibatch.mean(),
                             "gae_std": gae_minibatch.std(),
                             "gae_max": gae_minibatch.max(),
+                            "gae_norm_mean": gae_normalized.mean(),
+                            "gae_norm_std": gae_normalized.std(),
+                            "gae_norm_max": gae_normalized.max(),
                         }
 
                     grad_fn = jax.value_and_grad(_loss_fn, has_aux=True)
@@ -534,6 +537,13 @@ def make_train(config):
                     total_loss = loss_agent + loss_adversary
                     loss_info_agent["grad_norm"] = pytree_norm(grads_agent)
                     loss_info_adversary["grad_norm"] = pytree_norm(grads_adversary)
+                    loss_info_agent["distance"] = pytree_norm(
+                        updated_train_state_agent.params - train_state_agent.params
+                    )
+                    loss_info_adversary["distance"] = pytree_norm(
+                        updated_train_state_adversary.params
+                        - train_state_adversary.params
+                    )
 
                     loss_info_agent = {
                         k + "_agent": v for k, v in loss_info_agent.items()
@@ -543,6 +553,12 @@ def make_train(config):
                     }
                     loss_info = {**loss_info_agent, **loss_info_adversary}
                     loss_info["total_loss"] = total_loss
+
+                    # gae difference
+                    loss_info["gae_diff"] = (
+                        advantages_minibatch_agent.mean()
+                        - advantages_minibatch_adversary.mean()
+                    )
 
                     return (
                         updated_train_state_agent,

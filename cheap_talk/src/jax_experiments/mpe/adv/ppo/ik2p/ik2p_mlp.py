@@ -91,6 +91,16 @@ def make_train(config):
         if config["scale_clip_eps"]
         else config["clip_eps_k1"]
     )
+    config["clip_eps_k2"] = (
+        config["clip_eps_k2"] / env.num_agents
+        if config["scale_clip_eps"]
+        else config["clip_eps_k2"]
+    )
+    config["clip_eps_critic"] = (
+        config["clip_eps_critic"] / env.num_agents
+        if config["scale_clip_eps"]
+        else config["clip_eps_critic"]
+    )
 
     def linear_schedule(count):
         frac = (
@@ -542,6 +552,9 @@ def make_train(config):
                             "gae_mean": gae_minibatch.mean(),
                             "gae_std": gae_minibatch.std(),
                             "gae_max": gae_minibatch.max(),
+                            "gae_norm_mean": gae_normalized.mean(),
+                            "gae_norm_std": gae_normalized.std(),
+                            "gae_norm_max": gae_normalized.max(),
                         }
 
                     grad_fn_k1 = jax.value_and_grad(_loss_fn_k1, has_aux=True)
@@ -578,6 +591,13 @@ def make_train(config):
                     loss_info_adversary_k1["grad_norm"] = pytree_norm(
                         grads_adversary_k1
                     )
+                    loss_info_agent_k1["distance"] = pytree_norm(
+                        updated_train_state_agent.params - train_state_agent.params
+                    )
+                    loss_info_adversary_k1["distance"] = pytree_norm(
+                        updated_train_state_adversary.params
+                        - train_state_adversary.params
+                    )
 
                     # new ratios
                     pi_new_agent, _ = network_agent.apply(
@@ -610,6 +630,12 @@ def make_train(config):
                     }
                     loss_info_k1 = {**loss_info_agent_k1, **loss_info_adversary_k1}
                     loss_info_k1["total_loss"] = total_loss_k1
+
+                    # gae difference
+                    loss_info_k1["gae_diff"] = (
+                        advantages_minibatch_agent.mean()
+                        - advantages_minibatch_adversary.mean()
+                    )
 
                     # get k1 probs
                     agent_params_k1 = updated_train_state_agent.params
@@ -778,6 +804,9 @@ def make_train(config):
                             "gae_mean": gae_minibatch.mean(),
                             "gae_std": gae_minibatch.std(),
                             "gae_max": gae_minibatch.max(),
+                            "gae_norm_mean": gae_normalized.mean(),
+                            "gae_norm_std": gae_normalized.std(),
+                            "gae_norm_max": gae_normalized.max(),
                             "k2_ratio": k2_ratio,
                         }
 
@@ -821,6 +850,13 @@ def make_train(config):
                     loss_info_adversary_k2["grad_norm"] = pytree_norm(
                         grads_adversary_k2
                     )
+                    loss_info_agent_k2["distance"] = pytree_norm(
+                        updated_train_state_agent.params - train_state_agent.params
+                    )
+                    loss_info_adversary_k2["distance"] = pytree_norm(
+                        updated_train_state_adversary.params
+                        - train_state_adversary.params
+                    )
 
                     # new ratios
                     pi_new_agent, _ = network_agent.apply(
@@ -853,6 +889,12 @@ def make_train(config):
                     }
                     loss_info_k2 = {**loss_info_agent_k2, **loss_info_adversary_k2}
                     loss_info_k2["total_loss"] = total_loss_k2
+
+                    # gae difference
+                    loss_info_k2["gae_diff"] = (
+                        advantages_minibatch_agent.mean()
+                        - advantages_minibatch_adversary.mean()
+                    )
 
                     carry = (
                         updated_train_state_agent,
