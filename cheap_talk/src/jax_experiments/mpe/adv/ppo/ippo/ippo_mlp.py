@@ -470,7 +470,7 @@ def make_train(config):
                         value_pred_clipped = value_minibatch + (
                             value - value_minibatch
                         ).clip(-config["clip_eps"], config["clip_eps"])
-                        value_loss = 0.5 * jnp.square(value - targets_minibatch)
+                        value_loss = 0.5 * jnp.square(value - targets_minibatch).mean()
                         value_loss_clipped = jnp.square(
                             value_pred_clipped - targets_minibatch
                         )
