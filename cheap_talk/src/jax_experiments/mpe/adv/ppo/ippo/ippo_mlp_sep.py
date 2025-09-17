@@ -383,9 +383,14 @@ def make_train(config):
                     )
                     return (gae, value), gae
 
+                gae_and_next_value = (
+                    jnp.zeros_like(last_val),
+                    last_val,
+                )
+
                 _, advantages = jax.lax.scan(
                     _get_advantages,
-                    (jnp.zeros_like(last_val), last_val),
+                    gae_and_next_value,
                     traj_batch,
                     reverse=True,
                     unroll=16,
