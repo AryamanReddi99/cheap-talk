@@ -18,13 +18,13 @@ alg_names = [
 ]
 
 COLORS = {
-    "K2MAPPO": "#117733",
+    "K2MAPPO": "#e46464",
     "MAPPO": "#44AA99",
     "IPPO": "#56B4E9",
     "POLA": "#E69F00",
     "QMIX": "#0072B2",
     "VDN": "#FE6100",
-    "IQL": "#CC6677",
+    "IQL": "#117733",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))

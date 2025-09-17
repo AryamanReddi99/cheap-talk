@@ -18,13 +18,13 @@ alg_names = [
 ]
 
 COLORS = {
-    "K2MAPPO": "#117733",
+    "K2MAPPO": "#e46464",
     "MAPPO": "#44AA99",
     "IPPO": "#56B4E9",
     "POLA": "#E69F00",
     "QMIX": "#0072B2",
     "VDN": "#FE6100",
-    "IQL": "#CC6677",
+    "IQL": "#117733",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
@@ -79,7 +79,13 @@ legend_font_size = 20
 handles, labels = ax.get_legend_handles_labels()
 handles = [handles[-1]] + handles[:-1]
 labels = [labels[-1]] + labels[:-1]
-legend = ax.legend(handles, labels, prop={"size": legend_font_size})
+legend = ax.legend(
+    handles,
+    labels,
+    prop={"size": legend_font_size},
+    loc="right",
+    bbox_to_anchor=(1, 1, 1, 1),
+)
 texts = legend.get_texts()
 font_prop = font_manager.FontProperties(
     weight="bold", size=legend_font_size
@@ -91,6 +97,6 @@ texts[0].set_fontproperties(font_prop)
 
 
 # Figsize
-fig.set_size_inches(16 / 2.54, 12 / 2.54)  # Set figure size to 20cm by 20cm
+# fig.set_size_inches(16 / 2.54, 12 / 2.54)  # Set figure size to 20cm by 20cm
 plt.savefig(fname=str(fn_path) + f"/{env_name}.jpg", bbox_inches="tight")
 plt.savefig(fname=str(fn_path) + f"/{env_name}.pdf", bbox_inches="tight")

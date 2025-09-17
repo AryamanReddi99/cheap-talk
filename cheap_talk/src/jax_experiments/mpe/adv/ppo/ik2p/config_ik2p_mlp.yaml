@@ -16,7 +16,7 @@
 "max_grad_norm": 0.5
 "activation": "tanh"
 "fc_dim_size": 128
-"optimizer": "adam"
+"optimizer": "rmsprop"
 
 env_name: "MPE_simple_tag_v3"
 seed: 0
@@ -25,7 +25,7 @@ env_kwargs: {"num_good_agents": 1, "num_adversaries": 3, "num_obs": 2}
 
 # WandB Params
 project: "mpe"
-job_type: ik2p_constlr
+job_type: ik2p_constlr_rms
 use_timestamp: True
 wandb_mode: False
 log_network_stats: False
