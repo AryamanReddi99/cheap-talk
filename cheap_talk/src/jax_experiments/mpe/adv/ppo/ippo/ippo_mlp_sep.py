@@ -1066,7 +1066,7 @@ def make_train(config):
     return train
 
 
-@hydra.main(version_base=None, config_path="./", config_name="config_ippo_mlp")
+@hydra.main(version_base=None, config_path="./", config_name="config_ippo_mlp_sep")
 def main(config):
     try:
         # vmap and compile
