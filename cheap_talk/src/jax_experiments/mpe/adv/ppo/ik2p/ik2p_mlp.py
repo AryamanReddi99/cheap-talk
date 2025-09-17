@@ -505,7 +505,15 @@ def make_train(config):
                         gae_normalized = (gae_minibatch - gae_minibatch.mean()) / (
                             gae_minibatch.std() + 1e-8
                         )
-                        loss_actor_1 = ratio * gae_normalized
+                        # loss_actor_1 = ratio * gae_normalized
+                        loss_actor_1 = (
+                            jnp.clip(
+                                ratio,
+                                0.5,
+                                1.5,
+                            )
+                            * gae_normalized
+                        )
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio,
@@ -745,7 +753,15 @@ def make_train(config):
                         gae_normalized = (gae_minibatch - gae_minibatch.mean()) / (
                             gae_minibatch.std() + 1e-8
                         )
-                        loss_actor_1 = ratio_is * gae_normalized
+                        # loss_actor_1 = ratio * gae_normalized
+                        loss_actor_1 = (
+                            jnp.clip(
+                                ratio_is,
+                                0.5,
+                                1.5,
+                            )
+                            * gae_normalized
+                        )
                         loss_actor_2 = (
                             jnp.clip(
                                 ratio_is,
