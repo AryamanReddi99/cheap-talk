@@ -556,6 +556,7 @@ def make_train(config):
                     def _loss_fn_agent_critic(
                         agent_critic_params,
                         obs_minibatch,
+                        value_minibatch,
                         targets_minibatch,
                     ):
                         # RERUN NETWORK
@@ -563,7 +564,16 @@ def make_train(config):
                             agent_critic_params,
                             obs_minibatch,
                         )
-                        value_loss = 0.5 * jnp.square(value - targets_minibatch).mean()
+                        value_loss = jnp.square(value - targets_minibatch)
+                        value_pred_clipped = value_minibatch + (
+                            value - value_minibatch
+                        ).clip(-config["clip_eps"], config["clip_eps"])
+                        value_loss_clipped = jnp.square(
+                            value_pred_clipped - targets_minibatch
+                        )
+                        value_loss = (
+                            0.5 * jnp.maximum(value_loss, value_loss_clipped).mean()
+                        )
                         critic_loss = config["vf_coef"] * value_loss
                         return critic_loss, {
                             "critic_loss": critic_loss,
@@ -629,6 +639,7 @@ def make_train(config):
                     def _loss_fn_adversary_critic(
                         adversary_critic_params,
                         obs_minibatch,
+                        value_minibatch,
                         targets_minibatch,
                     ):
                         # RERUN NETWORK
@@ -636,7 +647,16 @@ def make_train(config):
                             adversary_critic_params,
                             obs_minibatch,
                         )
-                        value_loss = 0.5 * jnp.square(value - targets_minibatch).mean()
+                        value_loss = jnp.square(value - targets_minibatch)
+                        value_pred_clipped = value_minibatch + (
+                            value - value_minibatch
+                        ).clip(-config["clip_eps"], config["clip_eps"])
+                        value_loss_clipped = jnp.square(
+                            value_pred_clipped - targets_minibatch
+                        )
+                        value_loss = (
+                            0.5 * jnp.maximum(value_loss, value_loss_clipped).mean()
+                        )
                         critic_loss = config["vf_coef"] * value_loss
                         return critic_loss, {
                             "critic_loss": critic_loss,
@@ -661,6 +681,7 @@ def make_train(config):
                         grad_fn_agent_critic(
                             train_state_agent_critic.params,
                             obs_minibatch_agent,
+                            value_minibatch_agent,
                             targets_minibatch_agent,
                         )
                     )
@@ -686,6 +707,7 @@ def make_train(config):
                     ), grads_adversary_critic = grad_fn_adversary_critic(
                         train_state_adversary_critic.params,
                         obs_minibatch_adversary,
+                        value_minibatch_adversary,
                         targets_minibatch_adversary,
                     )
                     updated_train_state_agent_actor = (
