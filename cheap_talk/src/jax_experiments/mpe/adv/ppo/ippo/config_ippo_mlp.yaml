@@ -23,7 +23,7 @@ env_kwargs: {"num_good_agents": 1, "num_adversaries": 3, "num_obs": 2}
 
 # WandB Params
 project: "mpe"
-job_type: ippo_constlr
+job_type: ippo_constlr_novalueclip
 use_timestamp: True
 wandb_mode: False
 log_network_stats: False
