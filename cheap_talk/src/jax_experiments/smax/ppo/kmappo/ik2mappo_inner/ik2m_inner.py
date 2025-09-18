@@ -85,7 +85,6 @@ class SMAXWorldStateWrapper(JaxMARLWrapper):
         return jnp.concatenate((world_state, one_hot), axis=1)
 
     def world_state_size(self):
-
         return self._world_state_size
 
 

@@ -73,7 +73,7 @@ class MPEWorldStateWrapper(JaxMARLWrapper):
 
         all_obs = jnp.array([obs[agent] for agent in self._env.adversaries]).flatten()
         all_obs = jnp.expand_dims(all_obs, axis=0).repeat(
-            self._env.num_good_agents, axis=0
+            self._env.num_adversaries, axis=0
         )
         return all_obs
 
@@ -195,11 +195,14 @@ class RunnerState(NamedTuple):
     train_state_agent_critic: TrainState
     train_state_adversary_actor: TrainState
     train_state_adversary_critic: TrainState
-    obs_agent: jnp.ndarray
-    obs_adversary: jnp.ndarray
+    obs: Dict[str, jnp.ndarray]
     state: jnp.ndarray
     done_agent: jnp.ndarray
     done_adversary: jnp.ndarray
+    hstate_agent_actor: jnp.ndarray
+    hstate_adversary_actor: jnp.ndarray
+    hstate_agent_critic: jnp.ndarray
+    hstate_adversary_critic: jnp.ndarray
     cumulative_return_agent: jnp.ndarray
     cumulative_return_adversary: jnp.ndarray
     update_step: int
@@ -217,6 +220,10 @@ class Updatestate(NamedTuple):
     advantages_adversary: jnp.ndarray
     targets_agent: jnp.ndarray
     targets_adversary: jnp.ndarray
+    hstate_agent_actor: jnp.ndarray
+    hstate_adversary_actor: jnp.ndarray
+    hstate_agent_critic: jnp.ndarray
+    hstate_adversary_critic: jnp.ndarray
     rng: Array
 
 
@@ -232,6 +239,8 @@ def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
 
 def make_train(config):
     env = jaxmarl.make(config["env_name"], **config["env_kwargs"])
+    env = MPEWorldStateWrapper(env)
+    env = MPELogWrapper(env)
     config["num_actors"] = env.num_agents * config["num_envs"]
     config["num_agents"] = env.num_good_agents * config["num_envs"]
     config["num_adversaries"] = env.num_adversaries * config["num_envs"]
@@ -246,9 +255,6 @@ def make_train(config):
         if config["scale_clip_eps"]
         else config["clip_eps"]
     )
-
-    env = MPEWorldStateWrapper(env)
-    env = MPELogWrapper(env)
 
     def linear_schedule(count):
         frac = (
@@ -383,8 +389,6 @@ def make_train(config):
         rng, _rng = jax.random.split(rng)
         reset_rng = jax.random.split(_rng, config["num_envs"])
         obs, state = jax.vmap(env.reset, in_axes=(0,))(reset_rng)
-        obs_agent_batch = batchify(obs, env.good_agents, config["num_agents"])
-        obs_adversary_batch = batchify(obs, env.adversaries, config["num_adversaries"])
         ac_init_hstate_agent = ScannedRNN.initialize_carry(
             config["num_agents"], config["gru_hidden_dim"]
         )
@@ -405,88 +409,192 @@ def make_train(config):
                 train_state_agent_critic = runner_state.train_state_agent_critic
                 train_state_adversary_actor = runner_state.train_state_adversary_actor
                 train_state_adversary_critic = runner_state.train_state_adversary_critic
-                obs_agent_batch = runner_state.obs_agent
-                obs_adversary_batch = runner_state.obs_adversary
+                obs = runner_state.obs
                 state = runner_state.state
                 done_agent = runner_state.done_agent
                 done_adversary = runner_state.done_adversary
+                hstate_agent_actor = runner_state.hstate_agent_actor
+                hstate_adversary_actor = runner_state.hstate_adversary_actor
+                hstate_agent_critic = runner_state.hstate_agent_critic
+                hstate_adversary_critic = runner_state.hstate_adversary_critic
                 rng = runner_state.rng
 
                 # SELECT ACTION
-                rng, _rng = jax.random.split(rng)
-                obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
-                ac_in = (
-                    obs_batch[np.newaxis, :],
-                    last_done[np.newaxis, :],
+                rng, _rng_agent, _rng_adversary = jax.random.split(rng, 3)
+                obs_agent_batch = batchify(obs, env.good_agents, config["num_agents"])
+                ac_in_agent = (
+                    obs_agent_batch[np.newaxis, :],
+                    done_agent[np.newaxis, :],
                 )
-                ac_hstate, pi = actor_network.apply(
-                    train_states[0].params, hstates[0], ac_in
+                ac_hstate_agent, pi_agent = actor_network_agent.apply(
+                    train_state_agent_actor.params, hstate_agent_actor, ac_in_agent
                 )
-                action = pi.sample(seed=_rng)
-                log_prob = pi.log_prob(action)
-                env_act = unbatchify(
-                    action, env.agents, config["NUM_ENVS"], env.num_agents
+                action_agent = pi_agent.sample(seed=_rng_agent)
+                log_prob_agent = pi_agent.log_prob(action_agent)
+
+                obs_adversary_batch = batchify(
+                    obs, env.adversaries, config["num_adversaries"]
                 )
+                ac_in_adversary = (
+                    obs_adversary_batch[np.newaxis, :],
+                    done_adversary[np.newaxis, :],
+                )
+                ac_hstate_adversary, pi_adversary = actor_network_adversary.apply(
+                    train_state_adversary_actor.params,
+                    hstate_adversary_actor,
+                    ac_in_adversary,
+                )
+                action_adversary = pi_adversary.sample(seed=_rng_adversary)
+                log_prob_adversary = pi_adversary.log_prob(action_adversary)
+                env_act_agent = unbatchify(
+                    action_agent,
+                    env.good_agents,
+                    config["num_envs"],
+                    env.num_good_agents,
+                )
+                env_act_adversary = unbatchify(
+                    action_adversary,
+                    env.adversaries,
+                    config["num_envs"],
+                    env.num_adversaries,
+                )
+                env_act_agent = {k: v.squeeze() for k, v in env_act_agent.items()}
+                env_act_adversary = {
+                    k: v.squeeze() for k, v in env_act_adversary.items()
+                }
+                env_act = {**env_act_agent, **env_act_adversary}
+
                 # VALUE
                 # output of wrapper is (num_envs, num_agents, world_state_size)
                 # swap axes to (num_agents, num_envs, world_state_size) before reshaping to (num_actors, world_state_size)
-                world_state = last_obs["world_state"].swapaxes(0, 1)
-                world_state = world_state.reshape((config["NUM_ACTORS"], -1))
-                cr_in = (
-                    world_state[None, :],
-                    last_done[np.newaxis, :],
+                world_state_agent = obs["world_state_agent"].swapaxes(0, 1)
+                world_state_agent = world_state_agent.reshape(
+                    (config["num_agents"], -1)
                 )
-                cr_hstate, value = critic_network.apply(
-                    train_states[1].params, hstates[1], cr_in
+                world_state_adversary = obs["world_state_adversary"].swapaxes(0, 1)
+                world_state_adversary = world_state_adversary.reshape(
+                    (config["num_adversaries"], -1)
+                )
+
+                cr_in_agent = (
+                    world_state_agent[None, :],
+                    done_agent[np.newaxis, :],
+                )
+                cr_hstate_agent, value_agent = critic_network_agent.apply(
+                    train_state_agent_critic.params, hstate_agent_critic, cr_in_agent
+                )
+                cr_in_adversary = (
+                    world_state_adversary[None, :],
+                    done_adversary[np.newaxis, :],
+                )
+                cr_hstate_adversary, value_adversary = critic_network_adversary.apply(
+                    train_state_adversary_critic.params,
+                    hstate_adversary_critic,
+                    cr_in_adversary,
                 )
 
                 # STEP ENV
                 rng, _rng = jax.random.split(rng)
-                rng_step = jax.random.split(_rng, config["NUM_ENVS"])
-                obsv, env_state, reward, done, info = jax.vmap(
+                rng_step = jax.random.split(_rng, config["num_envs"])
+                new_obs, new_state, reward, new_done, info = jax.vmap(
                     env.step, in_axes=(0, 0, 0)
-                )(rng_step, env_state, env_act)
-                info = jax.tree.map(lambda x: x.reshape((config["NUM_ACTORS"])), info)
-                done_batch = batchify(done, env.agents, config["NUM_ACTORS"]).squeeze()
-                transition = Transition(
-                    jnp.tile(done["__all__"], env.num_agents),
-                    last_done,
-                    action.squeeze(),
-                    value.squeeze(),
-                    batchify(reward, env.agents, config["NUM_ACTORS"]).squeeze(),
-                    log_prob.squeeze(),
-                    obs_batch,
-                    world_state,
-                    info,
+                )(rng_step, state, env_act)
+                info = jax.tree.map(lambda x: x.reshape((config["num_actors"])), info)
+                new_done_batch_agent = batchify(
+                    new_done, env.good_agents, config["num_agents"]
+                ).squeeze()
+                new_done_batch_adversary = batchify(
+                    new_done, env.adversaries, config["num_adversaries"]
+                ).squeeze()
+                transition_agent = Transition(
+                    obs=obs_agent_batch,
+                    action=action_agent.squeeze(),
+                    log_prob=log_prob_agent.squeeze(),
+                    reward=batchify(
+                        reward, env.good_agents, config["num_agents"]
+                    ).squeeze(),
+                    done=done_agent,
+                    new_done=new_done_batch_agent,
+                    global_new_done=new_done["__all__"],
+                    value=value_agent.squeeze(),
+                    info=info,
                 )
-                runner_state = (
-                    train_states,
-                    env_state,
-                    obsv,
-                    done_batch,
-                    (ac_hstate, cr_hstate),
-                    rng,
+                transition_adversary = Transition(
+                    obs=obs_adversary_batch,
+                    action=action_adversary.squeeze(),
+                    log_prob=log_prob_adversary.squeeze(),
+                    reward=batchify(
+                        reward, env.adversaries, config["num_adversaries"]
+                    ).squeeze(),
+                    done=done_adversary,
+                    new_done=new_done_batch_adversary,
+                    global_new_done=new_done["__all__"],
+                    value=value_adversary.squeeze(),
+                    info=info,
                 )
-                return runner_state, transition
+                runner_state = RunnerState(
+                    train_state_agent_actor=train_state_agent_actor,
+                    train_state_agent_critic=train_state_agent_critic,
+                    train_state_adversary_actor=train_state_adversary_actor,
+                    train_state_adversary_critic=train_state_adversary_critic,
+                    obs=new_obs,
+                    state=new_state,
+                    done_agent=done_agent,
+                    done_adversary=done_adversary,
+                    hstate_agent_actor=ac_hstate_agent,
+                    hstate_adversary_actor=ac_hstate_adversary,
+                    hstate_agent_critic=cr_hstate_agent,
+                    hstate_adversary_critic=cr_hstate_adversary,
+                    cumulative_return_agent=runner_state.cumulative_return_agent,
+                    cumulative_return_adversary=runner_state.cumulative_return_adversary,
+                    update_step=runner_state.update_step,
+                    rng=rng,
+                )
+                return runner_state, (transition_agent, transition_adversary)
 
-            initial_hstates = runner_state[-2]
-            runner_state, traj_batch = jax.lax.scan(
-                _env_step, runner_state, None, config["NUM_STEPS"]
+            initial_hstate_agent_actor = runner_state.hstate_agent_actor
+            initial_hstate_adversary_actor = runner_state.hstate_adversary_actor
+            initial_hstate_agent_critic = runner_state.hstate_agent_critic
+            initial_hstate_adversary_critic = runner_state.hstate_adversary_critic
+            runner_state, (traj_batch_agent, traj_batch_adversary) = jax.lax.scan(
+                _env_step, runner_state, None, config["num_steps"]
             )
 
             # CALCULATE ADVANTAGE
-            train_states, env_state, last_obs, last_done, hstates, rng = runner_state
+            train_state_agent_critic = runner_state.train_state_agent_critic
+            train_state_adversary_critic = runner_state.train_state_adversary_critic
+            last_hstate_agent_critic = runner_state.hstate_agent_critic
+            last_hstate_adversary_critic = runner_state.hstate_adversary_critic
+            last_done_agent = runner_state.done_agent
+            last_done_adversary = runner_state.done_adversary
+            last_obs = runner_state.obs
+            last_state_agent = last_obs["world_state_agent"].swapaxes(0, 1)
+            last_state_agent = last_state_agent.reshape((config["num_agents"], -1))
 
-            last_world_state = last_obs["world_state"].swapaxes(0, 1)
-            last_world_state = last_world_state.reshape((config["NUM_ACTORS"], -1))
-            cr_in = (
-                last_world_state[None, :],
-                last_done[np.newaxis, :],
+            last_state_adversary = last_obs["world_state_adversary"].swapaxes(0, 1)
+            last_state_adversary = last_state_adversary.reshape(
+                (config["num_adversaries"], -1)
             )
-            _, last_val = critic_network.apply(
-                train_states[1].params, hstates[1], cr_in
+
+            cr_in_agent = (
+                last_state_agent[None, :],
+                last_done_agent[np.newaxis, :],
             )
-            last_val = last_val.squeeze()
+            _, last_val_agent = critic_network_agent.apply(
+                train_state_agent_critic.params, last_hstate_agent_critic, cr_in_agent
+            )
+            last_val_agent = last_val_agent.squeeze()
+
+            cr_in_adversary = (
+                last_state_adversary[None, :],
+                last_done_adversary[np.newaxis, :],
+            )
+            _, last_val_adversary = critic_network_adversary.apply(
+                train_state_adversary_critic.params,
+                last_hstate_adversary_critic,
+                cr_in_adversary,
+            )
+            last_val_adversary = last_val_adversary.squeeze()
 
             def _calculate_gae(traj_batch, last_val):
                 def _get_advantages(gae_and_next_value, transition):
@@ -708,8 +816,7 @@ def make_train(config):
             train_state_agent_critic=critic_train_state_agent,
             train_state_adversary_actor=actor_train_state_adversary,
             train_state_adversary_critic=critic_train_state_adversary,
-            obs_agent=obs_agent_batch,
-            obs_adversary=obs_adversary_batch,
+            obs=obs,
             state=state,
             done_agent=jnp.zeros((config["num_agents"]), dtype=bool),
             done_adversary=jnp.zeros((config["num_adversaries"]), dtype=bool),
