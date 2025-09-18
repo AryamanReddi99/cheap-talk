@@ -574,12 +574,11 @@ def make_train(config):
                         value_loss = (
                             0.5 * jnp.maximum(value_loss, value_loss_clipped).mean()
                         )
+
                         critic_loss = config["vf_coef"] * value_loss
                         return critic_loss, {
                             "critic_loss": critic_loss,
                         }
-
-                        # RERUN NETWORK
 
                     def _loss_fn_adversary_actor(
                         adversary_actor_params,
