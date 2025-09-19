@@ -1,0 +1,30 @@
+"total_timesteps": 1e6
+"num_envs": 16 
+"num_steps": 128 
+"lr": 5e-4
+"anneal_lr": True
+"update_epochs": 5
+"num_minibatches": 2
+"gamma": 0.99
+"gae_lambda": 1.0
+"clip_eps": 0.3
+"scale_clip_eps": False
+"ent_coef": 0.01
+"vf_coef": 1.0
+"max_grad_norm": 0.5
+"activation": "tanh"
+"fc_dim_size": 128
+"optimizer": "adam"
+"gru_hidden_dim": 128
+
+"env_name": "MPE_simple_adversary_v3"
+"seed": 0
+"num_seeds": 1
+"env_kwargs": {"num_good_agents": 1, "num_adversaries": 3, "num_obs": 2}
+
+# WandB Params
+"project": "mpe"
+job_type: mappo
+"use_timestamp": True
+"wandb_mode" : False
+log_network_stats: False
