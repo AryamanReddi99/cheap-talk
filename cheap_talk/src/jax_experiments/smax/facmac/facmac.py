@@ -206,7 +206,7 @@ def gumbel_softmax(rng, logits, tau=1.0, hard=True):
     if hard:
         # Straight-through estimator
         y_hard = jax.nn.one_hot(jnp.argmax(y_soft, axis=-1), logits.shape[-1])
-        y = y_hard - jax.lax.stop_gradient(y_soft) + y_soft
+        y = jax.lax.stop_gradient(y_hard - y_soft) + y_soft
     else:
         y = y_soft
 
@@ -651,7 +651,7 @@ def make_train(config, env):
                     _rngs_actor = jax.random.split(rng_actor, len(env.agents))
                     actions_soft = jax.vmap(
                         lambda rng, logits: gumbel_softmax(
-                            rng, logits, tau=config.get("GUMBEL_TAU", 1.0), hard=False
+                            rng, logits, tau=config.get("GUMBEL_TAU", 1.0), hard=True
                         ),
                         in_axes=(0, 0),
                     )(_rngs_actor, action_logits)
