@@ -909,12 +909,12 @@ def env_from_config(config):
 def main(config):
     try:
         config = OmegaConf.to_container(config)
-        alg_name = config.get("ALG_NAME", "ddpg")
+        alg_name = config.get("ALG_NAME", "facmac")
         env, env_name = env_from_config(copy.deepcopy(config))
 
         # WANDB
-        job_type = f"DDPG_{config['MAP_NAME']}"
-        group = f"DDPG_{config['MAP_NAME']}"
+        job_type = f"FACMAC_{config['MAP_NAME']}"
+        group = f"FACMAC_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
