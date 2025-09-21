@@ -150,9 +150,9 @@ class MixingNetwork(nn.Module):
         )(states)
 
         # monotonicity and reshaping
-        w_1 = jnp.abs(w_1.reshape(time_steps, batch_size, n_agents, self.embedding_dim))
+        w_1 = w_1.reshape(time_steps, batch_size, n_agents, self.embedding_dim)
         b_1 = b_1.reshape(time_steps, batch_size, 1, self.embedding_dim)
-        w_2 = jnp.abs(w_2.reshape(time_steps, batch_size, self.embedding_dim, 1))
+        w_2 = w_2.reshape(time_steps, batch_size, self.embedding_dim, 1)
         b_2 = b_2.reshape(time_steps, batch_size, 1, 1)
 
         # mix
@@ -679,8 +679,8 @@ def make_train(config, env):
                     return loss
 
                 # Update critic
-                critic_loss, critic_grads = jax.value_and_grad(
-                    _critic_loss_fn, has_aux=False
+                (critic_loss, critic_q_vals), critic_grads = jax.value_and_grad(
+                    _critic_loss_fn, has_aux=True
                 )(critic_train_state.params)
                 critic_train_state = critic_train_state.apply_gradients(
                     grads=critic_grads
