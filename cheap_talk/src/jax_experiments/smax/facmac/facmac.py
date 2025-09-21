@@ -602,7 +602,7 @@ def make_train(config, env):
                     _rngs_target = jax.random.split(rng_target, len(env.agents))
                     target_actions_one_hot = jax.vmap(
                         lambda rng, logits: gumbel_softmax(
-                            rng, logits, tau=0.1, hard=True
+                            rng, logits, tau=1.0, hard=True
                         ),
                         in_axes=(0, 0),
                     )(_rngs_target, next_action_logits)
