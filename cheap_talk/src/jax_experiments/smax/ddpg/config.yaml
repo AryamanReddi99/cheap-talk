@@ -1,0 +1,44 @@
+# DDPG configuration for SMAX environments
+"ALG_NAME": "ddpg"
+"TOTAL_TIMESTEPS": 1e7
+"NUM_ENVS": 16
+"NUM_STEPS": 128
+"LR": 0.00005
+"LR_LINEAR_DECAY": False
+"BUFFER_SIZE": 5000
+"BUFFER_BATCH_SIZE": 32
+"HIDDEN_SIZE": 512
+"MAX_GRAD_NORM": 10
+"TAU": 0.005  # Soft update rate for target networks
+"NUM_EPOCHS": 8
+"LEARNING_STARTS": 10000  # timesteps
+"GAMMA": 0.99
+"TARGET_UPDATE_INTERVAL": 10
+"REW_SCALE": 10.  # scale the reward to the original scale of SMAC
+
+# Exploration parameters
+"EPS_START": 1.0  # Starting epsilon for exploration
+"EPS_FINISH": 0.05  # Final epsilon value
+"EPS_DECAY": 0.1  # Percentage of updates over which to decay epsilon
+"GUMBEL_TAU": 1.0  # Temperature parameter for Gumbel Softmax
+
+# ENV
+"ENV_NAME": "HeuristicEnemySMAX"
+"MAP_NAME": "3s_vs_5z"
+"SEED": 0
+"NUM_SEEDS": 5
+"ENV_KWARGS":
+  "see_enemy_actions": True
+  "walls_cause_death": True
+  "attack_mode": "closest"
+
+# WandB Params
+"PROJECT": "smax"
+"USE_TIMESTAMP": True
+"WANDB_MODE": "disabled"  # online, disabled
+
+# evaluate
+"TEST_DURING_TRAINING": True
+"TEST_INTERVAL": 0.05  # as a fraction of updates, i.e. log every 5% of training process
+"TEST_NUM_STEPS": 128
+"TEST_NUM_ENVS": 512  # number of episodes to average over, can affect performance
