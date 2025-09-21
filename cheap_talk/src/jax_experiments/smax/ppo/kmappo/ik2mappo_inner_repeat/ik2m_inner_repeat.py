@@ -734,10 +734,10 @@ def make_train(config):
                     )
                     critic_grad_norm = pytree_norm(critic_grads)
 
-                    actor_train_state = actor_train_state.apply_gradients(
+                    actor_train_state_updated = actor_train_state.apply_gradients(
                         grads=actor_grads_k1
                     )
-                    critic_train_state = critic_train_state.apply_gradients(
+                    critic_train_state_updated = critic_train_state.apply_gradients(
                         grads=critic_grads
                     )
 
@@ -787,101 +787,18 @@ def make_train(config):
                     minibatch_log_prob_k1 = minibatches_k2[0][minibatch_idx]
                     minibatch_log_prob_k1_joint = minibatches_k2[1][minibatch_idx]
 
-                    # reset actor
-                    actor_train_state = actor_train_state.replace(
-                        params=actor_params_k0,
-                        opt_state=actor_opt_state_k0,
+                    ratio_scale_k = jnp.exp(
+                        minibatch_log_prob_k1_joint
+                        - minibatch_log_prob_k1
+                        + minibatch_log_prob_k0
+                        - minibatch_log_prob_k0_joint
+                    ).mean()
+                    actor_grads_k2 = jax.tree_util.tree_map(
+                        lambda x: x * ratio_scale_k, actor_grads_k1
                     )
-
-                    def _actor_loss_fn_k2(
-                        actor_params,
-                        actor_hidden_state_init,
-                        obs,
-                        done,
-                        avail_actions,
-                        action,
-                        gae,
-                        log_prob_k0,
-                        log_prob_k0_joint,
-                        log_prob_k1,
-                        log_prob_k1_joint,
-                    ):
-                        # RERUN NETWORK
-                        _, pi = actor_network.apply(
-                            actor_params,
-                            actor_hidden_state_init.squeeze(),
-                            (
-                                obs,
-                                done,
-                                avail_actions,
-                            ),
-                        )
-                        log_prob = pi.log_prob(action)
-
-                        # CALCULATE ACTOR LOSS
-                        logratio_is = (
-                            log_prob
-                            + log_prob_k1_joint
-                            - log_prob_k0_joint
-                            - log_prob_k1
-                        )
-
-                        ratio_is = jnp.exp(logratio_is)
-                        gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                        loss_actor1 = ratio_is * gae
-                        loss_actor2 = (
-                            jnp.clip(
-                                ratio_is,
-                                1.0 - config["CLIP_EPS"],
-                                1.0 + config["CLIP_EPS"],
-                            )
-                            * gae
-                        )
-                        loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
-                        loss_actor = loss_actor.mean()
-                        entropy = pi.entropy().mean()
-
-                        # debug
-                        approx_kl = ((ratio_is - 1) - logratio_is).mean()
-                        clip_frac = jnp.mean(jnp.abs(ratio_is - 1) > config["CLIP_EPS"])
-                        ratio_is_k = jnp.exp(
-                            log_prob_k1_joint
-                            - log_prob_k1
-                            + log_prob_k0
-                            - log_prob_k0_joint
-                        )
-
-                        actor_loss = loss_actor - config["ENT_COEF"] * entropy
-
-                        return actor_loss, (
-                            loss_actor,
-                            entropy,
-                            ratio_is,
-                            approx_kl,
-                            clip_frac,
-                            ratio_is_k,
-                        )
-
-                    actor_grad_fn_k2 = jax.value_and_grad(
-                        _actor_loss_fn_k2, has_aux=True
-                    )
-                    actor_loss_k2, actor_grads_k2 = actor_grad_fn_k2(
-                        actor_train_state.params,
-                        minibatch_actor_hidden_state_init,
-                        minibatch_obs,
-                        minibatch_done,
-                        minibatch_avail_actions,
-                        minibatch_action,
-                        minibatch_advantages,
-                        minibatch_log_prob_k0,
-                        minibatch_log_prob_k0_joint,
-                        minibatch_log_prob_k1,
-                        minibatch_log_prob_k1_joint,
-                    )
-                    ratio_is_k = actor_loss_k2[1][5]
                     actor_grad_norm_k2 = pytree_norm(actor_grads_k2)
 
-                    actor_train_state = actor_train_state.apply_gradients(
+                    actor_train_state_updated = actor_train_state.apply_gradients(
                         grads=actor_grads_k2
                     )
                     actor_params_k2 = actor_train_state.params
@@ -896,19 +813,6 @@ def make_train(config):
                     )
                     log_prob_k2 = pi_k2.log_prob(action)
                     log_prob_new_k2 = jnp.exp(log_prob_k2 - log_prob_k0)
-
-                    gae_norm = (minibatch_advantages - minibatch_advantages.mean()) / (
-                        minibatch_advantages.std() + 1e-8
-                    )
-
-                    gae_ratio_is_k_agree = jnp.mean(
-                        jnp.where(
-                            ((gae_norm > 0) & (ratio_is_k > 1))
-                            | ((gae_norm < 0) & (ratio_is_k < 1)),
-                            1,
-                            0,
-                        )
-                    )
 
                     total_loss = actor_loss[0] + critic_loss[0]
                     cosine_similarity = pytree_cosine_similarity(
@@ -928,20 +832,14 @@ def make_train(config):
                         "log_prob_new": log_prob_new_k1,
                     }
                     loss_info_k = {
-                        "actor_loss_k": actor_loss_k2[0],
-                        "entropy_k": actor_loss_k2[1][1],
-                        "ratio_k": actor_loss_k2[1][2],
-                        "approx_kl_k": actor_loss_k2[1][3],
-                        "clip_frac_k": actor_loss_k2[1][4],
-                        "ratio_is_k": actor_loss_k2[1][5],
-                        "gae_ratio_is_k_agree": gae_ratio_is_k_agree,
                         "actor_grad_norm_k": actor_grad_norm_k2,
                         "log_prob_new_k": log_prob_new_k2,
+                        "ratio_scale_k": ratio_scale_k,
                     }
 
                     return (
-                        actor_train_state,
-                        critic_train_state,
+                        actor_train_state_updated,
+                        critic_train_state_updated,
                         actor_hidden_state_init,
                         critic_hidden_state_init,
                         obs,
@@ -1038,7 +936,6 @@ def make_train(config):
             rng = final_update_state.rng
 
             loss_info["ratio_0"] = loss_info["ratio"].at[0, 0].get()
-            loss_info_k["ratio_0_k"] = loss_info_k["ratio_k"].at[0, 0].get()
             loss_info = jax.tree.map(lambda x: x.mean(), loss_info)
             loss_info_k = jax.tree.map(lambda x: x.mean(), loss_info_k)
 
@@ -1108,14 +1005,14 @@ def make_train(config):
     return train
 
 
-@hydra.main(version_base=None, config_path="./", config_name="config_ik2m_inner")
+@hydra.main(version_base=None, config_path="./", config_name="config_ik2m_inner_repeat")
 def main(config):
     try:
         config = OmegaConf.to_container(config)
 
         # WANDB
-        job_type = f"iK2M_IN_{config['MAP_NAME']}"
-        group = f"iK2M_IN_TEST_{config['MAP_NAME']}"
+        job_type = f"iK2M_IN_REPEAT_{config['MAP_NAME']}"
+        group = f"iK2M_IN_REPEAT_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
