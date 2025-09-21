@@ -390,12 +390,12 @@ def make_train(config, env):
 
             actor_tx = optax.chain(
                 optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                optax.adam(learning_rate=lr),
+                optax.radam(learning_rate=lr),
             )
 
             critic_tx = optax.chain(
                 optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                optax.adam(learning_rate=lr),
+                optax.radam(learning_rate=lr),
             )
 
             actor_train_state = CustomTrainState.create(
