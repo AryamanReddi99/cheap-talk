@@ -31,7 +31,7 @@
 "ENV_NAME": "HeuristicEnemySMAX"
 "MAP_NAME": "3s_vs_5z"
 "SEED": 0
-"NUM_SEEDS": 5
+"NUM_SEEDS": 2
 "ENV_KWARGS":
   "see_enemy_actions": True
   "walls_cause_death": True
