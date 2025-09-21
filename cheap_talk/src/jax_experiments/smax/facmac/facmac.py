@@ -628,7 +628,7 @@ def make_train(config, env):
                     # Compute target values
                     qmix_target = minibatch.rewards["__all__"][:-1] + config[
                         "GAMMA"
-                    ] * qmix_next[1:] * (1 - minibatch.dones["__all__"][:-1])
+                    ] * qmix_next[1:] * (1 - minibatch.dones["__all__"][1:])
 
                     # MSE loss
                     loss = jnp.mean((qmix - jax.lax.stop_gradient(qmix_target)) ** 2)
