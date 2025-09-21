@@ -150,9 +150,9 @@ class MixingNetwork(nn.Module):
         )(states)
 
         # monotonicity and reshaping
-        w_1 = w_1.reshape(time_steps, batch_size, n_agents, self.embedding_dim)
+        w_1 = jnp.abs(w_1.reshape(time_steps, batch_size, n_agents, self.embedding_dim))
         b_1 = b_1.reshape(time_steps, batch_size, 1, self.embedding_dim)
-        w_2 = w_2.reshape(time_steps, batch_size, self.embedding_dim, 1)
+        w_2 = jnp.abs(w_2.reshape(time_steps, batch_size, self.embedding_dim, 1))
         b_2 = b_2.reshape(time_steps, batch_size, 1, 1)
 
         # mix
