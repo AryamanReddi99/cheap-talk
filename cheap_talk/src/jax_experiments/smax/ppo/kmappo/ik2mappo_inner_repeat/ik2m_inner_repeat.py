@@ -573,9 +573,6 @@ def make_train(config):
                         permutation,
                     ) = carry
 
-                    actor_params_k0 = actor_train_state.params
-                    actor_opt_state_k0 = actor_train_state.opt_state
-
                     # Get log_prob_k0_joint
                     log_prob_k0_reshape = log_prob_k0.reshape(
                         -1, env.num_agents, config["NUM_ENVS"]
@@ -814,8 +811,8 @@ def make_train(config):
                     log_prob_k2 = pi_k2.log_prob(action)
                     log_prob_new_k2 = jnp.exp(log_prob_k2 - log_prob_k0)
 
-                    gae_norm = (minibatch_advantages - minibatch_advantages.mean()) / (
-                        minibatch_advantages.std() + 1e-8
+                    gae_norm = (advantages - advantages.mean()) / (
+                        advantages.std() + 1e-8
                     )
 
                     gae_ratio_k1_agree = jnp.mean(
