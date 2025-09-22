@@ -814,6 +814,19 @@ def make_train(config):
                     log_prob_k2 = pi_k2.log_prob(action)
                     log_prob_new_k2 = jnp.exp(log_prob_k2 - log_prob_k0)
 
+                    gae_norm = (minibatch_advantages - minibatch_advantages.mean()) / (
+                        minibatch_advantages.std() + 1e-8
+                    )
+
+                    gae_ratio_k1_agree = jnp.mean(
+                        jnp.where(
+                            ((gae_norm > 0) & (log_prob_new_k1 > 1))
+                            | ((gae_norm < 0) & (log_prob_new_k1 < 1)),
+                            1,
+                            0,
+                        )
+                    )
+
                     total_loss = actor_loss[0] + critic_loss[0]
                     cosine_similarity = pytree_cosine_similarity(
                         actor_grads_k1, actor_grads_k2
@@ -830,6 +843,7 @@ def make_train(config):
                         "critic_grad_norm": critic_grad_norm,
                         "cosine_similarity": cosine_similarity,
                         "log_prob_new": log_prob_new_k1,
+                        "gae_ratio_k1_agree": gae_ratio_k1_agree,
                     }
                     loss_info_k = {
                         "actor_grad_norm_k": actor_grad_norm_k2,
