@@ -22,8 +22,8 @@ import functools
 import hydra
 from omegaconf import OmegaConf
 import datetime
-from cheap_talk.src.jax_experiments.utils.wandb_process import WandbMultiLogger
-from cheap_talk.src.jax_experiments.utils.jax_utils import pytree_norm
+from cheap_talk.src.utils.wandb_process import WandbMultiLogger
+from cheap_talk.src.utils.jax_utils import pytree_norm
 
 
 class ScannedRNN(nn.Module):

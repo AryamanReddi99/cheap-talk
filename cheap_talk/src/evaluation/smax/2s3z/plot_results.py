@@ -18,13 +18,23 @@ alg_names = [
 ]
 
 COLORS = {
-    "K2MAPPO": "#e46464",
-    "MAPPO": "#44AA99",
-    "IPPO": "#56B4E9",
-    "POLA": "#E69F00",
-    "QMIX": "#0072B2",
-    "VDN": "#FE6100",
-    "IQL": "#117733",
+    "K2MAPPO": "#E15759",
+    "MAPPO": "#56B4E9",
+    "IPPO": "#76B7B2",
+    "POLA": "#EDC948",
+    "QMIX": "#B07AA1",
+    "VDN": "#009E73",
+    "IQL": "#9C755F",
+}
+
+LABELS = {
+    "K2MAPPO": "ReMAPPO",
+    "MAPPO": "MAPPO",
+    "IPPO": "IPPO",
+    "POLA": "POLA",
+    "QMIX": "QMIX",
+    "VDN": "VDN",
+    "IQL": "IQL",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
@@ -50,7 +60,7 @@ for i in range(len(alg_names)):
     ax.plot(
         x,
         np.mean(d[alg_names[i]], axis=0),
-        label=alg_names[i],
+        label=LABELS[alg_names[i]],
         color=color,
         linewidth=3,
     )

@@ -18,13 +18,23 @@ alg_names = [
 ]
 
 COLORS = {
-    "K2MAPPO": "#e46464",
-    "MAPPO": "#44AA99",
-    "IPPO": "#56B4E9",
-    "POLA": "#E69F00",
-    "QMIX": "#0072B2",
-    "VDN": "#FE6100",
-    "IQL": "#117733",
+    "K2MAPPO": "#E15759",
+    "MAPPO": "#56B4E9",
+    "IPPO": "#76B7B2",
+    "POLA": "#EDC948",
+    "QMIX": "#B07AA1",
+    "VDN": "#009E73",
+    "IQL": "#9C755F",
+}
+
+LABELS = {
+    "K2MAPPO": "ReMAPPO",
+    "MAPPO": "MAPPO",
+    "IPPO": "IPPO",
+    "POLA": "POLA",
+    "QMIX": "QMIX",
+    "VDN": "VDN",
+    "IQL": "IQL",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
@@ -49,7 +59,7 @@ for i in range(len(alg_names)):
     color = COLORS[alg_names[i]]
 
     if alg_names[i] == "K2MAPPO":
-        alg_label = "K2-MAPPO"
+        alg_label = "ReMAPPO"
     else:
         alg_label = alg_names[i]
     ax.plot(
@@ -83,8 +93,8 @@ legend = ax.legend(
     handles,
     labels,
     prop={"size": legend_font_size},
-    loc="right",
-    bbox_to_anchor=(1, 1, 1, 1),
+    # loc="right",
+    # bbox_to_anchor=(1, 1, 1, 1),
 )
 texts = legend.get_texts()
 font_prop = font_manager.FontProperties(
@@ -97,6 +107,6 @@ texts[0].set_fontproperties(font_prop)
 
 
 # Figsize
-# fig.set_size_inches(16 / 2.54, 12 / 2.54)  # Set figure size to 20cm by 20cm
+fig.set_size_inches(16 / 2.54, 12 / 2.54)  # Set figure size to 20cm by 20cm
 plt.savefig(fname=str(fn_path) + f"/{env_name}.jpg", bbox_inches="tight")
 plt.savefig(fname=str(fn_path) + f"/{env_name}.pdf", bbox_inches="tight")

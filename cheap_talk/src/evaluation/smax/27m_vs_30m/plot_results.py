@@ -14,10 +14,11 @@ alg_names = [
 ]
 
 COLORS = {
-    "K2MAPPO": "#117733",
-    "MAPPO": "#44AA99",
-    "IPPO": "#56B4E9",
+    "K2MAPPO": "#E15759",
+    "MAPPO": "#56B4E9",
+    "IPPO": "#76B7B2",
 }
+
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
 env_name = fn_path.split("/")[-1]
