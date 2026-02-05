@@ -656,8 +656,8 @@ def main(config):
         config = OmegaConf.to_container(config)
 
         # WANDB
-        group = f"MAPPO_{config['MAP_NAME']}"
-        job_type = f"MAPPO_{config['MAP_NAME']}"
+        group = f"MAPPO_NOSHARE_{config['MAP_NAME']}"
+        job_type = f"MAPPO_NOSHARE_{config['MAP_NAME']}"
         if config["USE_TIMESTAMP"]:
             group += datetime.datetime.now().strftime("_%Y-%m-%d_%H-%M-%S")
         global LOGGER
