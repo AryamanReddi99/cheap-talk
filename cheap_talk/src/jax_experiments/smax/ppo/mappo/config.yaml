@@ -18,7 +18,7 @@
 
 "SCALE_CLIP_EPS": False
 "ENV_NAME": "HeuristicEnemySMAX"
-"MAP_NAME": "smacv2_5_units"
+"MAP_NAME": "2s3z"
 "SEED": 0
 "NUM_SEEDS": 5
 "ENV_KWARGS": 
@@ -29,4 +29,4 @@
 # WandB Params
 "PROJECT": "smax"
 "USE_TIMESTAMP": True
-"WANDB_MODE" : "online" # online, disabled
+"WANDB_MODE" : "disabled" # online, disabled

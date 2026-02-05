@@ -10,7 +10,7 @@ import numpy as np
 import optax
 import datetime
 from flax.linen.initializers import constant, orthogonal
-from typing import Sequence, NamedTuple, Any, Tuple, Union, Dict
+from typing import Sequence, NamedTuple, Dict
 import wandb
 import functools
 from flax.training.train_state import TrainState
@@ -228,7 +228,10 @@ def make_train(config):
             jnp.zeros((1, config["NUM_ENVS"], env.action_space(env.agents[0]).n)),
         )
         ac_init_hstate = ScannedRNN.initialize_carry(config["NUM_ENVS"], config["GRU_HIDDEN_DIM"])
-        actor_network_params = actor_network.init(_rng_actor, ac_init_hstate, ac_init_x)
+        actor_init_rngs = jax.random.split(_rng_actor, env.num_agents)
+        actor_network_params = jax.vmap(
+            lambda rng: actor_network.init(rng, ac_init_hstate, ac_init_x)
+        )(actor_init_rngs)
         cr_init_x = (
             jnp.zeros(
                 (
@@ -293,15 +296,33 @@ def make_train(config):
                     batchify(avail_actions, env.agents, config["NUM_ACTORS"])
                 )
                 obs_batch = batchify(last_obs, env.agents, config["NUM_ACTORS"])
-                ac_in = (
-                    obs_batch[np.newaxis, :],
-                    last_done[np.newaxis, :],
-                    avail_actions,
+                obs_batch_reshaped = obs_batch.reshape(
+                    (env.num_agents, config["NUM_ENVS"], obs_batch.shape[-1])
                 )
-                # print('env step ac in', ac_in)
-                ac_hstate, pi = actor_network.apply(train_states[0].params, hstates[0], ac_in)
-                action = pi.sample(seed=_rng)
-                log_prob = pi.log_prob(action)
+                last_done_batch = last_done.reshape((env.num_agents, config["NUM_ENVS"]))
+                avail_actions_reshaped = avail_actions.reshape(
+                    (env.num_agents, config["NUM_ENVS"], avail_actions.shape[-1])
+                )
+                ac_hstate = hstates[0].reshape(
+                    (env.num_agents, config["NUM_ENVS"], hstates[0].shape[-1])
+                )
+
+                def _actor_apply(params, hstate, obs, done, avail):
+                    ac_in = (obs[None, ...], done[None, ...], avail)
+                    return actor_network.apply(params, hstate, ac_in)
+
+                ac_hstate, pi = jax.vmap(_actor_apply)(
+                    train_states[0].params,
+                    ac_hstate,
+                    obs_batch_reshaped,
+                    last_done_batch,
+                    avail_actions_reshaped,
+                )
+                action = pi.sample(seed=_rng).reshape((config["NUM_ACTORS"],))
+                action_agent = action.reshape((env.num_agents, config["NUM_ENVS"]))
+                log_prob = pi.log_prob(action_agent[:, None, :])
+                log_prob = log_prob.reshape((config["NUM_ACTORS"],))
+                ac_hstate = ac_hstate.reshape((config["NUM_ACTORS"], -1))
                 env_act = unbatchify(action, env.agents, config["NUM_ENVS"], env.num_agents)
                 env_act = {k: v.squeeze() for k, v in env_act.items()}
 
@@ -396,15 +417,53 @@ def make_train(config):
 
                     def _actor_loss_fn(actor_params, init_hstate, traj_batch, gae):
                         # RERUN NETWORK
-                        _, pi = actor_network.apply(
-                            actor_params,
-                            init_hstate.squeeze(),
-                            (traj_batch.obs, traj_batch.done, traj_batch.avail_actions),
+                        num_envs = traj_batch.done.shape[1] // env.num_agents
+                        obs = traj_batch.obs.reshape(
+                            (config["NUM_STEPS"], env.num_agents, num_envs, -1)
                         )
-                        log_prob = pi.log_prob(traj_batch.action)
+                        done = traj_batch.done.reshape(
+                            (config["NUM_STEPS"], env.num_agents, num_envs)
+                        )
+                        avail_actions = traj_batch.avail_actions.reshape(
+                            (
+                                config["NUM_STEPS"],
+                                env.num_agents,
+                                num_envs,
+                                -1,
+                            )
+                        )
+                        action = traj_batch.action.reshape(
+                            (config["NUM_STEPS"], env.num_agents, num_envs)
+                        )
+                        old_log_prob = traj_batch.log_prob.reshape(
+                            (config["NUM_STEPS"], env.num_agents, num_envs)
+                        )
+                        gae = gae.reshape((config["NUM_STEPS"], env.num_agents, num_envs))
+
+                        obs = jnp.swapaxes(obs, 0, 1)
+                        done = jnp.swapaxes(done, 0, 1)
+                        avail_actions = jnp.swapaxes(avail_actions, 0, 1)
+                        action = jnp.swapaxes(action, 0, 1)
+                        old_log_prob = jnp.swapaxes(old_log_prob, 0, 1)
+                        gae = jnp.swapaxes(gae, 0, 1)
+
+                        init_hstate = init_hstate.reshape((env.num_agents, num_envs, -1))
+
+                        def _actor_apply(params, hstate, obs, done, avail):
+                            _, pi = actor_network.apply(params, hstate, (obs, done, avail))
+                            return pi
+
+                        pi = jax.vmap(_actor_apply)(
+                            actor_params,
+                            init_hstate,
+                            obs,
+                            done,
+                            avail_actions,
+                        )
+                        log_prob = pi.log_prob(action)
 
                         # CALCULATE ACTOR LOSS
-                        logratio = log_prob - traj_batch.log_prob
+                        logratio = log_prob - old_log_prob
                         ratio = jnp.exp(logratio)
                         gae = (gae - gae.mean()) / (gae.std() + 1e-8)
                         loss_actor1 = ratio * gae
