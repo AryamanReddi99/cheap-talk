@@ -650,7 +650,7 @@ def make_train(config):
     return train
 
 
-@hydra.main(version_base=None, config_path="./", config_name="config")
+@hydra.main(version_base=None, config_path="./", config_name="config_noshare")
 def main(config):
     try:
         config = OmegaConf.to_container(config)
