@@ -32,6 +32,7 @@ for i in range(len(algs)):
     d[alg_names[i]] = wr
     fn_path = Path(data_save_path) / f"{alg_names[i]}.npy"
     np.save(fn_path, wr)
+    # print(f"Saved {algs[i]} data")
 
 # IPPO
 ippo = d["IPPO"]
@@ -40,7 +41,7 @@ fn_path = Path(data_save_path) / "IPPO.npy"
 np.save(fn_path, ippo)
 
 # POLA
-pola = d["POLA"]
-pola = pola / 3
-fn_path = Path(data_save_path) / "POLA.npy"
-np.save(fn_path, pola)
+# pola = d["POLA"]
+# pola = pola / 3
+# fn_path = Path(data_save_path) / "POLA.npy"
+# np.save(fn_path, pola)
