@@ -934,6 +934,9 @@ def make_train(config):
                         minibatch_log_prob_k1_joint,
                     )
                     ratio_is_k = actor_loss_k2[1][5]
+                    ratio_is_k = jnp.swapaxes(ratio_is_k, 0, 1).reshape(
+                        (config["NUM_STEPS"], -1)
+                    )
                     # actor_grad_norm_k2 = pytree_norm(actor_grads_k2)
                     actor_grad_norm_k2 = 0
 
