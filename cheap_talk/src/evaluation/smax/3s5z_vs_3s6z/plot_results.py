@@ -14,8 +14,8 @@ alg_names = [
     "QMIX",
     "VDN",
     "IQL",
-    "K2MAPPO",
     "EGMAPPO",
+    "K2MAPPO",
 ]
 
 COLORS = {
@@ -63,6 +63,8 @@ for i in range(len(alg_names)):
 
     if alg_names[i] == "K2MAPPO":
         alg_label = "ReMAPPO"
+    elif alg_names[i] == "EGMAPPO":
+        alg_label = LABELS["EGMAPPO"]
     else:
         alg_label = alg_names[i]
     ax.plot(
