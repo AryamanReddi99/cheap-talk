@@ -13,6 +13,11 @@
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate cheap
 
+# submitted from this directory; make the checked-out cheap_talk package importable
+# even when the installed editable package points at a different checkout
+REPO_ROOT=$(cd ../../../../../.. && pwd)
+export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
+
 # the evaluation downloaders read tu-darmstadt-literl/smax, which is not the default entity
 export WANDB_ENTITY=tu-darmstadt-literl
 
