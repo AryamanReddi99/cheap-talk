@@ -11,12 +11,14 @@ alg_names = [
     "MAPPO",
     "IPPO",
     "K2MAPPO",
+    "EGMAPPO",
 ]
 
 COLORS = {
     "K2MAPPO": "#E15759",
     "MAPPO": "#56B4E9",
     "IPPO": "#76B7B2",
+    "EGMAPPO": "#F28E2B",
 }
 
 
