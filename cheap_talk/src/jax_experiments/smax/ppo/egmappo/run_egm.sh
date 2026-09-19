@@ -2,8 +2,8 @@
 #SBATCH -J EGMAPPO
 #SBATCH -a 0 # Controls the number of replication
 #SBATCH -n 1  ## ALWAYS leave this value to 1. This is only used for MPI, which is not supported now. 
-#SBATCH -c 1
-#SBATCH --mem-per-cpu 16000
+#SBATCH -c 4
+#SBATCH --mem-per-cpu 4000
 #SBATCH -t 06:00:00
 #SBATCH -p main
 #SBATCH --gres=gpu:1
