@@ -17,8 +17,9 @@ algs = [
     f"IPPO_{folder_name}",
     f"iK2M_IN_{folder_name}",
     f"EGMAPPO_{folder_name}",
+    f"iK2M_MOM_{folder_name}",
 ]
-alg_names = ["MAPPO", "VDN", "IQL", "QMIX", "IPPO", "K2MAPPO", "EGMAPPO"]
+alg_names = ["MAPPO", "VDN", "IQL", "QMIX", "IPPO", "K2MAPPO", "EGMAPPO", "K2MAPPO_MOM"]
 d = {}
 
 for i in range(len(algs)):

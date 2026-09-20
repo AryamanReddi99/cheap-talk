@@ -15,6 +15,7 @@ alg_names = [
     "VDN",
     "IQL",
     "EGMAPPO",
+    "K2MAPPO_MOM",
     "K2MAPPO",
 ]
 
@@ -27,6 +28,7 @@ COLORS = {
     "VDN": "#009E73",
     "IQL": "#9C755F",
     "EGMAPPO": "#F28E2B",
+    "K2MAPPO_MOM": "#2E2EB8",
 }
 
 LABELS = {
@@ -38,6 +40,7 @@ LABELS = {
     "VDN": "VDN",
     "IQL": "IQL",
     "EGMAPPO": "EG-MAPPO",
+    "K2MAPPO_MOM": "ReMAPPO-Mom",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
@@ -63,6 +66,8 @@ for i in range(len(alg_names)):
 
     if alg_names[i] == "K2MAPPO":
         alg_label = "ReMAPPO"
+    elif alg_names[i] == "K2MAPPO_MOM":
+        alg_label = LABELS["K2MAPPO_MOM"]
     elif alg_names[i] == "EGMAPPO":
         alg_label = LABELS["EGMAPPO"]
     else:

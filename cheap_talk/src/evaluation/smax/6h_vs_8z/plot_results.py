@@ -16,6 +16,7 @@ alg_names = [
     "IQL",
     "K2MAPPO",
     "EGMAPPO",
+    "K2MAPPO_MOM",
 ]
 
 COLORS = {
@@ -27,6 +28,7 @@ COLORS = {
     "VDN": "#009E73",
     "IQL": "#9C755F",
     "EGMAPPO": "#F28E2B",
+    "K2MAPPO_MOM": "#2E2EB8",
 }
 
 LABELS = {
@@ -38,6 +40,7 @@ LABELS = {
     "VDN": "VDN",
     "IQL": "IQL",
     "EGMAPPO": "EG-MAPPO",
+    "K2MAPPO_MOM": "ReMAPPO-Mom",
 }
 fn_path = os.path.dirname(os.path.abspath(__file__))
 env_name = fn_path.split("/")[-1]
