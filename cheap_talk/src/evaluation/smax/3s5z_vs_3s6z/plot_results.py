@@ -14,6 +14,7 @@ alg_names = [
     "QMIX",
     "VDN",
     "IQL",
+    "K2MAPPO_MOM",
     "K2MAPPO",
 ]
 
@@ -25,6 +26,7 @@ COLORS = {
     "QMIX": "#B07AA1",
     "VDN": "#009E73",
     "IQL": "#9C755F",
+    "K2MAPPO_MOM": "#2E2EB8",
 }
 
 LABELS = {
@@ -35,6 +37,7 @@ LABELS = {
     "QMIX": "QMIX",
     "VDN": "VDN",
     "IQL": "IQL",
+    "K2MAPPO_MOM": "ReMAPPO-Mom",
 }
 
 fn_path = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +63,8 @@ for i in range(len(alg_names)):
 
     if alg_names[i] == "K2MAPPO":
         alg_label = "ReMAPPO"
+    elif alg_names[i] == "K2MAPPO_MOM":
+        alg_label = LABELS["K2MAPPO_MOM"]
     else:
         alg_label = alg_names[i]
     ax.plot(
